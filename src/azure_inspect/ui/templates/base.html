@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Tenant Inspector</title>
+  
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="navbar navbar-dark">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap;">
+      <a class="navbar-brand fade-in" href="/">☁️ Azure Inspector</a>
+      
+      <!-- Mobile overlay -->
+      <div class="nav-overlay" id="navOverlay"></div>
+      
+      <!-- Navigation Menu -->
+      <div class="nav-menu" id="navMenu">
+        <a class="nav-btn btn btn-light" href="/" data-bs-toggle="tooltip" data-bs-title="View dashboard">Dashboard</a>
+        <a class="nav-btn btn btn-light" href="/resources" data-bs-toggle="tooltip" data-bs-title="Browse resources">Resources</a>
+        <a class="nav-btn btn btn-light" href="/activity" data-bs-toggle="tooltip" data-bs-title="View activity logs">Activity</a>
+        <a class="nav-btn btn btn-light" href="/costs" data-bs-toggle="tooltip" data-bs-title="Analyze costs">Costs</a>
+        <button class="theme-toggle" id="themeToggle" title="Toggle dark mode" data-bs-toggle="tooltip" data-bs-title="Switch theme">
+          <span id="themeIcon">🌙</span> Theme
+        </button>
+      </div>
+      
+      <!-- Hamburger Menu Button -->
+      <button class="mobile-nav-toggle" id="mobileMenuToggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="container mt-4" style="padding-bottom: 3rem;">
+    <!-- Breadcrumbs -->
+    {% if breadcrumbs %}
+    <nav aria-label="breadcrumb" class="mb-4">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        {% for link, label in breadcrumbs %}
+          {% if loop.last %}
+          <li class="breadcrumb-item active">{{ label }}</li>
+          {% else %}
+          <li class="breadcrumb-item"><a href="{{ link }}">{{ label }}</a></li>
+          {% endif %}
+        {% endfor %}
+      </ol>
+    </nav>
+    {% endif %}
+    
+    <!-- Action Bar -->
+    <div class="action-bar mb-4 slide-in" id="actionBar">
+      <div class="action-group">
+        <button class="action-btn" id="refreshBtn" onclick="refreshData()" title="Refresh data" data-bs-toggle="tooltip" data-bs-title="Reload latest data">
+          <span>🔄</span> Refresh
+        </button>
+        <button class="action-btn" id="exportBtn" onclick="exportTableToCSV()" title="Export to CSV" data-bs-toggle="tooltip" data-bs-title="Download as CSV file">
+          <span>📥</span> Export
+        </button>
+        <button class="action-btn" id="printBtn" onclick="window.print()" title="Print page" data-bs-toggle="tooltip" data-bs-title="Open print dialog">
+          <span>🖨️</span> Print
+        </button>
+      </div>
+    </div>
+    
+    {% block content %}
+    {% endblock %}
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer mt-5">
+    <div class="container">
+      <div class="row py-4">
+        <div class="col-md-6">
+          <h6>Azure Inspector</h6>
+          <p class="text-muted small">Monitor and analyze your Azure tenant resources, costs, and activity logs in one place.</p>
+        </div>
+        <div class="col-md-3">
+          <h6>Quick Links</h6>
+          <ul class="list-unstyled small">
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/resources">Resources</a></li>
+            <li><a href="/activity">Activity</a></li>
+            <li><a href="/costs">Costs</a></li>
+          </ul>
+        </div>
+        <div class="col-md-3">
+          <h6>Info</h6>
+          <ul class="list-unstyled small">
+            <li>Azure SDK Powered</li>
+            <li>Real-time Data</li>
+            <li>Secure Credentials</li>
+          </ul>
+        </div>
+      </div>
+      <hr>
+      <div class="py-2 text-center text-muted small">
+        <p>&copy; 2026 Azure Inspector. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <!-- Theme & Utility Scripts -->
+  <script>
+    // Mobile menu toggle
+    function setupMobileMenu() {
+      const toggle = document.getElementById('mobileMenuToggle');
+      const menu = document.getElementById('navMenu');
+      const overlay = document.getElementById('navOverlay');
+      
+      function closeMenu() {
+        toggle.classList.remove('active');
+        menu.classList.remove('active');
+        overlay.classList.remove('active');
+      }
+      
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggle.classList.toggle('active');
+        menu.classList.toggle('active');
+        overlay.classList.toggle('active');
+      });
+      
+      // Close menu when clicking overlay
+      overlay.addEventListener('click', closeMenu);
+      
+      // Close menu when clicking a link
+      menu.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', closeMenu);
+      });
+      
+      // Close menu when window is resized (back to desktop)
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+          closeMenu();
+        }
+      });
+    }
+    
+    // Initialize tooltips
+    function initializeTooltips() {
+      const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      tooltipTriggerList.map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    }
+    
+    // Show loading spinner and refresh
+    function refreshData() {
+      const btn = document.getElementById('refreshBtn');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-small"></span> Refreshing...';
+      btn.disabled = true;
+      
+      setTimeout(() => {
+        location.reload();
+      }, 500);
+    }
+    
+    // Show toast notification
+    function showToast(message, type = 'success') {
+      const toastHTML = `
+        <div class="alert alert-${type} alert-dismissible fade-in" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+          ${message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      `;
+      
+      const toastContainer = document.createElement('div');
+      toastContainer.innerHTML = toastHTML;
+      document.body.appendChild(toastContainer.firstElementChild);
+      
+      setTimeout(() => {
+        const alert = document.querySelector('.alert:last-of-type');
+        if (alert) alert.remove();
+      }, 4000);
+    }
+    
+    // Initialize theme from localStorage or system preference
+    function initializeTheme() {
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = savedTheme ? savedTheme === 'dark' : prefersDark;
+      
+      if (isDark) {
+        document.documentElement.classList.add('dark-mode');
+        document.getElementById('themeIcon').textContent = '☀️';
+      } else {
+        document.documentElement.classList.remove('dark-mode');
+        document.getElementById('themeIcon').textContent = '🌙';
+      }
+    }
+    
+    // Theme toggle functionality
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      const isDark = document.documentElement.classList.toggle('dark-mode');
+      document.getElementById('themeIcon').textContent = isDark ? '☀️' : '🌙';
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      showToast(`Switched to ${isDark ? 'dark' : 'light'} mode`);
+    });
+    
+    // Initialize table features after tooltips
+    document.addEventListener('DOMContentLoaded', function() {
+      initializeTheme();
+      initializeTooltips();
+      setupTableSorting();
+      setupPagination();
+      setupMobileMenu();
+    });
+    // Table Sorting
+    function setupTableSorting() {
+      const tables = document.querySelectorAll('table');
+      
+      tables.forEach(table => {
+        const headers = table.querySelectorAll('thead th.sortable');
+        let currentSort = { column: null, direction: 'asc' };
+        
+        headers.forEach((header, index) => {
+          header.addEventListener('click', () => {
+            const isCurrentSort = currentSort.column === index;
+            const direction = isCurrentSort && currentSort.direction === 'asc' ? 'desc' : 'asc';
+            
+            // Remove previous sort indicator
+            headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+            
+            // Add new sort indicator
+            header.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            
+            // Sort table
+            sortTable(table, index, direction);
+            
+            currentSort = { column: index, direction };
+          });
+        });
+      });
+    }
+    
+    function sortTable(table, columnIndex, direction) {
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.style.display !== 'none');
+      
+      rows.sort((a, b) => {
+        const aValue = a.cells[columnIndex].textContent.trim();
+        const bValue = b.cells[columnIndex].textContent.trim();
+        
+        // Try numeric comparison if both are numbers
+        const aNum = parseFloat(aValue);
+        const bNum = parseFloat(bValue);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return direction === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        
+        // String comparison
+        return direction === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      });
+      
+      // Reorder rows
+      rows.forEach(row => tbody.appendChild(row));
+    }
+    
+    // Pagination
+    let currentPage = {};
+    const rowsPerPage = 10;
+    
+    function setupPagination() {
+      const tables = document.querySelectorAll('table');
+      
+      tables.forEach((table, index) => {
+        const tableId = table.id || `table-${index}`;
+        table.id = tableId;
+        currentPage[tableId] = 1;
+        
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        if (rows.length > rowsPerPage) {
+          showPage(tableId, 1);
+          addPaginationControls(table, Math.ceil(rows.length / rowsPerPage));
+        }
+      });
+    }
+    
+    function showPage(tableId, page) {
+      const table = document.getElementById(tableId);
+      const tbody = table.querySelector('tbody');
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      const start = (page - 1) * rowsPerPage;
+      const end = start + rowsPerPage;
+      
+      allRows.forEach((row, idx) => {
+        row.style.display = (idx >= start && idx < end) ? '' : 'none';
+      });
+      
+      currentPage[tableId] = page;
+      updatePaginationInfo(tableId, Math.ceil(allRows.length / rowsPerPage));
+    }
+    
+    function addPaginationControls(table, totalPages) {
+      const tableId = table.id;
+      const paginationHTML = `
+        <div class="pagination-controls">
+          <div class="pagination-info">Showing <strong id="row-start-${tableId}">1</strong>-<strong id="row-end-${tableId}">10</strong> of <strong id="row-total-${tableId}">0</strong> rows</div>
+          <div class="pagination-buttons">
+            <button class="pagination-btn" onclick="showPage('${tableId}', 1)" id="first-${tableId}">First</button>
+            <button class="pagination-btn" onclick="previousPage('${tableId}')">← Prev</button>
+            <span style="margin: 0 0.5rem; color: var(--text-color); font-weight: 500;">Page <span id="current-page-${tableId}">1</span> of ${totalPages}</span>
+            <button class="pagination-btn" onclick="nextPage('${tableId}', ${totalPages})">Next →</button>
+            <button class="pagination-btn" onclick="showPage('${tableId}', ${totalPages})" id="last-${tableId}">Last</button>
+          </div>
+        </div>
+      `;
+      
+      const paginationDiv = document.createElement('div');
+      paginationDiv.innerHTML = paginationHTML;
+      table.parentNode.insertBefore(paginationDiv.firstElementChild, table.nextSibling);
+    }
+    
+    function nextPage(tableId, totalPages) {
+      if (currentPage[tableId] < totalPages) {
+        showPage(tableId, currentPage[tableId] + 1);
+      }
+    }
+    
+    function previousPage(tableId) {
+      if (currentPage[tableId] > 1) {
+        showPage(tableId, currentPage[tableId] - 1);
+      }
+    }
+    
+    function updatePaginationInfo(tableId, totalPages) {
+      const page = currentPage[tableId];
+      const start = (page - 1) * rowsPerPage + 1;
+      const end = Math.min(page * rowsPerPage, document.getElementById(tableId).querySelectorAll('tbody tr').length);
+      
+      document.getElementById(`row-start-${tableId}`).textContent = start;
+      document.getElementById(`row-end-${tableId}`).textContent = end;
+      document.getElementById(`row-total-${tableId}`).textContent = document.getElementById(tableId).querySelectorAll('tbody tr').length;
+      document.getElementById(`current-page-${tableId}`).textContent = page;
+    }
+    function filterTable(inputId, tableId) {
+      const input = document.getElementById(inputId);
+      const table = document.getElementById(tableId);
+      const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+      const filter = input.value.toLowerCase();
+      
+      for (let i = 0; i < rows.length; i++) {
+        const text = rows[i].textContent.toLowerCase();
+        rows[i].style.display = text.includes(filter) ? '' : 'none';
+      }
+    }
+    
+    // Export Table to CSV with feedback
+    function exportTableToCSV(filename = 'azure_data.csv') {
+      const tables = document.querySelectorAll('table');
+      if (tables.length === 0) {
+        showToast('No table data to export', 'warning');
+        return;
+      }
+      
+      let csv = '';
+      
+      tables.forEach((table, index) => {
+        if (index > 0) csv += '\n\n';
+        
+        // Add header
+        const headers = table.querySelectorAll('thead th');
+        csv += Array.from(headers).map(h => '"' + h.textContent.trim() + '"').join(',') + '\n';
+        
+        // Add rows
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+          if (row.style.display !== 'none') {
+            const cells = row.querySelectorAll('td');
+            csv += Array.from(cells).map(c => '"' + c.textContent.trim() + '"').join(',') + '\n';
+          }
+        });
+      });
+      
+      // Download CSV
+      const link = document.createElement('a');
+      link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      link.download = filename;
+      link.click();
+      
+      showToast(`✅ Exported ${filename}`, 'success');
+    }
+    
+    // Add visual feedback to action buttons
+    document.querySelectorAll('.action-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        this.classList.add('bounce');
+        setTimeout(() => this.classList.remove('bounce'), 600);
+      });
+    });
+  </script>
+  
+  {% block scripts %}{% endblock %}
+</body>
+</html>

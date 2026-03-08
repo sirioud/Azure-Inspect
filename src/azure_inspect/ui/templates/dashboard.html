@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% set breadcrumbs = [] %}
+
+{% block content %}
+
+<!-- Hero Section -->
+<div class="hero-section fade-in">
+  <h1 style="-webkit-text-fill-color: white; background: none; color: white;">📊 Azure Inspector Dashboard</h1>
+  <p>Real-time monitoring and analysis of your Azure infrastructure</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+  <div class="stat-card resources fade-in">
+    <h3>📦 Resource Groups</h3>
+    <div class="stat-value">{{ resources|length }}</div>
+    <div class="stat-label">Available</div>
+  </div>
+  <div class="stat-card activity fade-in" style="animation-delay: 0.1s;">
+    <h3>📋 Activity Events</h3>
+    <div class="stat-value">{{ activity|length }}</div>
+    <div class="stat-label">Recent</div>
+  </div>
+  <div class="stat-card costs fade-in" style="animation-delay: 0.2s;">
+    <h3>💰 Cost Groups</h3>
+    <div class="stat-value">{{ costs|length }}</div>
+    <div class="stat-label">Tracked</div>
+  </div>
+</div>
+
+
+<div class="card mt-4 fade-in">
+  <div class="card-header">💰 Costs by Resource Group</div>
+  <div class="card-body" style="padding: 2rem;">
+    {% if costs %}
+    <canvas id="costChart" style="max-height: 400px; margin-bottom: 1rem;"></canvas>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; color: #666;">
+      <p style="font-size: 1.1rem;">📊 No cost data available</p>
+      <p style="color: #999; font-size: 0.9rem;">Cost information will appear once Azure data is loaded</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mt-4 fade-in">
+  <div class="card-header">📋 Recent Activity Log</div>
+  <div class="card-body" style="padding: 0;">
+    {% if activity %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Operation</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in activity[:10] %}
+        <tr>
+          <td>{{ a.eventTimestamp }}</td>
+          <td>{{ a.operationName.value }}</td>
+          <td><span class="badge" style="background-color: {% if a.status.value|lower == 'succeeded' %}#107c10{% else %}#d13438{% endif %}">{{ a.status.value if a.status else "unknown" }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; color: #666;">
+      <p style="font-size: 1.1rem;">📭 No recent activity</p>
+      <p style="color: #999; font-size: 0.9rem;">Activity logs will appear as operations occur</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+
+const labels = [
+{% for c in costs %}
+"{{ c.name }}",
+{% endfor %}
+]
+
+const values = [
+{% for c in costs %}
+{{ c.cost }},
+{% endfor %}
+]
+
+new Chart(
+document.getElementById('costChart'),
+{
+type: 'bar',
+data: {
+labels: labels,
+datasets: [{
+label: 'Cost ($)',
+data: values
+}]
+}
+}
+)
+
+</script>
+
+{% endblock %}

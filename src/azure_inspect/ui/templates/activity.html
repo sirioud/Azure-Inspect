@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% set breadcrumbs = [['/', 'Dashboard'], ['/activity', 'Activity']] %}
+
+{% block content %}
+
+<div class="page-header fade-in">
+  <h1>📋 Activity Logs</h1>
+  <p class="text-muted">Monitor Azure activity and audit logs from your subscription.</p>
+</div>
+
+<div class="search-box fade-in" style="animation-delay: 0.1s;">
+  <input type="text" id="activitySearch" class="form-control" placeholder="🔍 Search activity logs by time, operation, status, or caller..." onkeyup="filterTable('activitySearch', 'activityTable')">
+</div>
+
+<div class="card fade-in" style="animation-delay: 0.2s;">
+  <div class="card-header">📝 Azure Activity Log Events <span class="badge bg-primary float-end">{{ activity|length }} events</span></div>
+  <div class="card-body" style="padding: 0;">
+    {% if activity %}
+    <table id="activityTable">
+      <thead>
+        <tr>
+          <th class="sortable">Time</th>
+          <th class="sortable">Operation</th>
+          <th class="sortable">Status</th>
+          <th class="sortable">Caller</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in activity %}
+        <tr>
+          <td>{{ a.event_timestamp }}</td>
+          <td>{{ a.operation_name }}</td>
+          <td>
+            <span class="badge" style="background-color: {% if 'success' in a.status|lower %}#107c10{% elif 'fail' in a.status|lower %}#d13438{% else %}#ff8c00{% endif %}">
+              {{ a.status }}
+            </span>
+          </td>
+          <td>{{ a.caller }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; color: #666;">
+      <p style="font-size: 1.1rem;">📭 No activity logs found</p>
+      <p style="color: #999; font-size: 0.9rem;">Activity logs will appear as operations occur in your Azure tenant</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

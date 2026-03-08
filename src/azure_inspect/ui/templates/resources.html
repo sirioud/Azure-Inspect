@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% set breadcrumbs = [['/', 'Dashboard'], ['/resources', 'Resources']] %}
+
+{% block content %}
+
+<div class="page-header fade-in">
+  <h1>📦 Resources</h1>
+  <p class="text-muted">Browse and manage all resources in your Azure subscription.</p>
+</div>
+
+<div class="search-box fade-in" style="animation-delay: 0.1s;">
+  <input type="text" id="resourceSearch" class="form-control" placeholder="🔍 Search resources by name, type, location, or group..." onkeyup="filterTable('resourceSearch', 'resourceTable')">
+</div>
+
+<div class="card fade-in" style="animation-delay: 0.2s;">
+  <div class="card-header">📚 Resource Groups & Inventory <span class="badge bg-primary float-end">{{ resources|length }} items</span></div>
+  <div class="card-body" style="padding: 0;">
+    {% if resources %}
+    <table id="resourceTable">
+      <thead>
+        <tr>
+          <th class="sortable">Name</th>
+          <th class="sortable">Type</th>
+          <th class="sortable">Location</th>
+          <th class="sortable">Resource Group</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in resources %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td><span class="badge bg-info">{{ r.type }}</span></td>
+          <td>{{ r.location }}</td>
+          <td><strong>{{ r.resourceGroup }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 3rem; color: #666;">
+      <p style="font-size: 1.3rem; margin-bottom: 0.5rem;">📭 No resources found</p>
+      <p style="color: #999; font-size: 0.95rem;">No resources are currently available in your Azure subscription</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
