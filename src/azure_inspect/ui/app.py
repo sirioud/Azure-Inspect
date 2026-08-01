@@ -1,10 +1,23 @@
 """Flask web application for Azure-Inspect (the dashboard)."""
 from __future__ import annotations
 
+import hmac
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    render_template_string,
+    request,
+    session,
+    url_for,
+)
+
+from dotenv import load_dotenv
 
 from ..config import AzureConfig, load_config
 from ..costs import cost_by_resource_group
@@ -60,9 +73,10 @@ _INDEX_HTML = """<!doctype html>
   button:hover,select:hover { border-color:var(--accent); box-shadow:0 0 0 3px rgba(88,166,255,.14); transform:translateY(-1px); }
   button:active { transform:translateY(0); } button:disabled { opacity:.5; cursor:default; transform:none; box-shadow:none; }
   input[type=checkbox]{ accent-color:var(--accent); }
+  .logout { color:var(--muted); text-decoration:none; font-size:.8rem; padding:.4rem .7rem; border:1px solid var(--border); border-radius:10px; transition:all .15s; }
+  .logout:hover { color:var(--fg); border-color:var(--accent); }
   main { padding:1.9rem; max-width:1180px; margin:0 auto; }
 
-  /* toast */
   #toast { position:fixed; bottom:1.4rem; left:50%; transform:translateX(-50%) translateY(20px);
     z-index:50; max-width:560px; padding:.8rem 1.1rem; border-radius:13px; font-size:.84rem; opacity:0;
     background:rgba(20,26,38,.92); border:1px solid rgba(255,107,129,.4); color:var(--red);
@@ -106,7 +120,6 @@ _INDEX_HTML = """<!doctype html>
   .loc { font-size:.72rem; color:var(--muted); }
   .muted { color:var(--muted); }
 
-  /* elegant empty / error states */
   .state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.6rem;
     padding:2.2rem 1rem; text-align:center; color:var(--muted); animation:fadein .4s ease; }
   .state-box .ico { width:42px; height:42px; opacity:.55; }
@@ -141,6 +154,7 @@ _INDEX_HTML = """<!doctype html>
     </label>
     <label title="Auto-refresh every 60s"><input type="checkbox" id="auto" checked> auto</label>
     <button id="refresh">↻ Refresh</button>
+    <a class="logout" href="/logout">Logout</a>
   </div>
 </header>
 <div id="toast"></div>
@@ -255,6 +269,49 @@ loadAll(); setupAuto();
 """
 
 
+_LOGIN_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Azure-Inspect · Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:'Inter',system-ui,sans-serif; color:#eaf1f8;
+    background: radial-gradient(40% 50% at 30% 30%, rgba(88,166,255,.25), transparent 60%),
+                radial-gradient(45% 55% at 75% 70%, rgba(124,92,255,.22), transparent 60%), #070a12; }
+  .box { width:min(380px,92vw); padding:2.2rem; border-radius:20px; text-align:center;
+    background:rgba(20,26,38,.7); border:1px solid rgba(255,255,255,.1); box-shadow:0 20px 60px rgba(0,0,0,.5);
+    backdrop-filter:blur(14px); }
+  .box h1 { margin:.2rem 0 1.4rem; font-size:1.4rem; font-weight:800; letter-spacing:-.02em;
+    background:linear-gradient(100deg,#58a6ff,#39d3ff 50%,#7c5cff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  input[type=password] { width:100%; padding:.8rem 1rem; border-radius:12px; border:1px solid rgba(255,255,255,.12);
+    background:#0e131d; color:#eaf1f8; font:inherit; font-size:.95rem; margin-bottom:.9rem; }
+  input[type=password]:focus { outline:none; border-color:#58a6ff; box-shadow:0 0 0 3px rgba(88,166,255,.15); }
+  button { width:100%; padding:.8rem; border:none; border-radius:12px; cursor:pointer; font:inherit; font-weight:600; font-size:.95rem;
+    color:#06101f; background:linear-gradient(100deg,#58a6ff,#39d3ff); transition:transform .1s, box-shadow .15s; }
+  button:hover { box-shadow:0 0 20px rgba(57,211,255,.4); transform:translateY(-1px); }
+  .err { color:#ff6b81; font-size:.82rem; margin-bottom:.8rem; min-height:1em; }
+  .hint { color:#8593a6; font-size:.74rem; margin-top:1rem; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Azure-Inspect</h1>
+  <form method="post" action="/login">
+    <div class="err">{{ error or '' }}</div>
+    <input type="password" name="password" placeholder="Dashboard password" autofocus required>
+    <button type="submit">Sign in</button>
+  </form>
+  <div class="hint">Protected dashboard · service-principal view</div>
+</div>
+</body>
+</html>
+"""
+
+
 _NOT_CONFIGURED = {
     "error": "Azure credentials are not configured. Set AZURE_TENANT_ID, "
              "AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and AZURE_SUBSCRIPTION_ID.",
@@ -358,6 +415,7 @@ def _coerce_days(raw: str | None, default: int = 30) -> int:
 def create_app(
     config_provider: Optional[Callable[[], AzureConfig]] = None,
     debug: bool = False,
+    auth: Optional[bool] = None,
 ) -> Flask:
     """Build and return the Flask application.
 
@@ -367,8 +425,76 @@ def create_app(
             provider keeps the app testable and lets callers supply config
             without touching the environment.
         debug: Flask debug mode.
+        auth: dashboard password-gate behaviour. ``None`` (default) enables the
+            gate when ``DASHBOARD_PASSWORD`` is set in the environment, and
+            leaves it open otherwise. Pass ``False`` to force the gate off
+            (used by tests); pass ``True`` to force it on.
     """
     app = Flask(__name__)
+
+    # --- password gate (optional) ---
+    # Load .env so DASHBOARD_PASSWORD / DASHBOARD_SECRET are available in the
+    # process environment (they live in the same .env as the Azure creds).
+    load_dotenv()
+    # DASHBOARD_PASSWORD enables the gate. If unset, the dashboard is open.
+    # DASHBOARD_SECRET signs the session cookie; a random one is generated when
+    # unset (sessions reset on restart — set it for stable logins).
+    required_pw = os.environ.get("DASHBOARD_PASSWORD")
+    if auth is False:
+        required_pw = None  # force gate off (e.g. tests)
+    elif auth is True and not required_pw:
+        required_pw = secrets.token_hex(16)  # force gate on with a throwaway pw
+    secret = os.environ.get("DASHBOARD_SECRET")
+    if not secret:
+        secret = secrets.token_hex(32)
+        if auth is not False:
+            app.logger.warning(
+                "DASHBOARD_SECRET not set; generated an ephemeral signing key "
+                "(sessions expire on restart). Set DASHBOARD_SECRET in .env."
+            )
+    if auth is not False and not required_pw:
+        app.logger.warning(
+            "DASHBOARD_PASSWORD not set; dashboard is OPEN (no auth gate)."
+        )
+    app.secret_key = secret
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    # Only set Secure when not on plain HTTP (LAN). Behind TLS, set
+    # DASHBOARD_SECURE_COOKIE=1 to force Secure cookies.
+    if os.environ.get("DASHBOARD_SECURE_COOKIE") == "1":
+        app.config["SESSION_COOKIE_SECURE"] = True
+
+    @app.before_request
+    def _require_auth():
+        if not required_pw:
+            return  # gate disabled
+        if request.path in ("/login", "/health"):
+            return
+        if request.path.startswith("/static"):
+            return
+        if session.get("authed"):
+            return
+        return redirect(url_for("login"))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not required_pw:
+            return redirect(url_for("index"))
+        error = None
+        if request.method == "POST":
+            pw = request.form.get("password", "")
+            # constant-time comparison to avoid timing leaks
+            if hmac.compare_digest(pw, required_pw):
+                session["authed"] = True
+                session.permanent = True
+                return redirect(url_for("index"))
+            error = "Incorrect password"
+        return render_template_string(_LOGIN_HTML, error=error)
+
+    @app.route("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     @app.route("/")
     def index():

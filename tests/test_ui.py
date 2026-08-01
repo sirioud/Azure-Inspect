@@ -14,7 +14,7 @@ def _stub_cfg():
 def _client(config_provider=None):
     if config_provider is None:
         config_provider = _stub_cfg
-    app = create_app(config_provider=config_provider)
+    app = create_app(config_provider=config_provider, auth=False)
     app.config["TESTING"] = True
     return app.test_client()
 
@@ -96,7 +96,7 @@ def test_not_configured_returns_503_with_code():
     # A provider that mimics load_config() failing when creds are absent.
     def raising():
         raise RuntimeError("Missing required environment variable(s)")
-    app = create_app(config_provider=raising)
+    app = create_app(config_provider=raising, auth=False)
     app.config["TESTING"] = True
     with mock.patch.dict(os.environ, {}, clear=True):
         r = app.test_client().get("/api/summary")
@@ -144,3 +144,49 @@ def test_costs_invalid_days_falls_back_to_30():
         r = _client().get("/api/costs?days=999")
     assert r.status_code == 200
     assert captured["from_date"] == date.today() - timedelta(days=30)
+
+
+def test_auth_gate_disabled_when_password_unset():
+    """With no DASHBOARD_PASSWORD and auth=True default, but env-driven, _client
+    forces auth=False — ensure index is reachable without a session."""
+    r = _client().get("/")
+    assert r.status_code == 200
+
+
+def test_auth_gate_enabled_with_password():
+    """When a dashboard password is set, unauthenticated access redirects to login."""
+    import azure_inspect.ui.app as m
+    app = m.create_app(config_provider=_stub_cfg, auth=True)
+    app.config["TESTING"] = True
+    c = app.test_client()
+    # / and an API must both redirect to /login when unauthenticated
+    r = c.get("/", follow_redirects=False)
+    assert r.status_code == 302 and "/login" in r.headers.get("Location", "")
+    r = c.get("/api/resources", follow_redirects=False)
+    assert r.status_code == 302 and "/login" in r.headers.get("Location", "")
+
+
+def test_auth_gate_login_success_and_failure():
+    """Wrong password is rejected; correct password grants access."""
+    import azure_inspect.ui.app as m
+    app = m.create_app(config_provider=_stub_cfg, auth=True)
+    app.config["TESTING"] = True
+    c = app.test_client()
+    pw = app.secret_key  # not the pw; we need the generated throwaway pw — read env
+    # The throwaway pw is set in required_pw but not exposed; log in via the
+    # app's own password by capturing it through monkeypatch on the closure.
+    # Simpler: set the env and rebuild.
+    import os
+    os.environ["DASHBOARD_PASSWORD"] = "correct-horse-battery-staple"
+    app2 = m.create_app(config_provider=_stub_cfg, auth=True)
+    c2 = app2.test_client()
+    # wrong password
+    r = c2.post("/login", data={"password": "nope"}, follow_redirects=False)
+    assert r.status_code == 200 and b"Incorrect" in r.data
+    # correct password
+    r = c2.post("/login", data={"password": "correct-horse-battery-staple"}, follow_redirects=False)
+    assert r.status_code == 302 and "/" in r.headers.get("Location", "")
+    # now authenticated
+    r = c2.get("/")
+    assert r.status_code == 200
+    del os.environ["DASHBOARD_PASSWORD"]
