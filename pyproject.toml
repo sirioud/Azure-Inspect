@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "azure-inspect"
+version = "0.2.0"
+description = "Inspect Azure resources, cost and activity from the CLI or a web dashboard."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "msal>=1.28",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "flask>=3.0",
+]
+
+[project.scripts]
+azure-inspect = "azure_inspect.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

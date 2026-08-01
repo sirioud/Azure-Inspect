@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Secrets — never commit real credentials
+.env
+
+# Tooling / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
