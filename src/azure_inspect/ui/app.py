@@ -1,9 +1,12 @@
 """Flask web application for Azure-Inspect (the dashboard)."""
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template_string
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Optional
 
-from ..config import load_config
+from flask import Flask, jsonify, render_template_string, request
+
+from ..config import AzureConfig, load_config
 from ..costs import cost_by_resource_group
 from ..logs import get_activity_log
 from ..resources import list_resource_groups
@@ -21,19 +24,26 @@ _INDEX_HTML = """<!doctype html>
   body { font-family: system-ui, -apple-system, sans-serif; margin:0; background:var(--bg);
          color:var(--fg); }
   header { display:flex; align-items:center; justify-content:space-between;
-           padding:1rem 2rem; border-bottom:1px solid var(--border); }
+           padding:1rem 2rem; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:.5rem; }
   header h1 { margin:0; font-size:1.3rem; color:var(--accent); }
+  #controls { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
   #meta { font-size:.8rem; color:var(--muted); }
-  #refresh { background:var(--panel); color:var(--fg); border:1px solid var(--border);
-             border-radius:6px; padding:.4rem .8rem; cursor:pointer; }
-  #refresh:hover { border-color:var(--accent); }
+  select, button { background:var(--panel); color:var(--fg); border:1px solid var(--border);
+             border-radius:6px; padding:.4rem .8rem; cursor:pointer; font:inherit; }
+  button:hover, select:hover { border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
   main { padding:2rem; max-width:1100px; margin:0 auto; }
+  .banner { padding:.7rem 1rem; border-radius:6px; margin-bottom:1.5rem; font-size:.85rem; display:none; }
+  .banner.warn { display:block; background:rgba(248,81,73,.12); border:1px solid var(--red); color:var(--red); }
   .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:2rem; }
   .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1rem; }
   .card .k { font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
   .card .v { font-size:1.6rem; font-weight:600; margin-top:.3rem; color:var(--accent); }
   section { margin-bottom:2rem; }
-  h2 { font-size:1rem; border-bottom:1px solid var(--border); padding-bottom:.4rem; }
+  .section-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-bottom:.6rem; }
+  h2 { font-size:1rem; margin:0; }
+  input[type=search] { background:var(--panel); color:var(--fg); border:1px solid var(--border);
+             border-radius:6px; padding:.3rem .6rem; font:inherit; min-width:200px; }
   table { border-collapse:collapse; width:100%; font-size:.85rem; }
   th, td { border-bottom:1px solid var(--border); padding:6px 10px; text-align:left; }
   th { color:var(--muted); font-weight:500; }
@@ -50,21 +60,36 @@ _INDEX_HTML = """<!doctype html>
 <body>
 <header>
   <h1>Azure-Inspect</h1>
-  <div style="display:flex; gap:1rem; align-items:center;">
-    <span id="meta">subscription: <span id="sub">…</span></span>
+  <div id="controls">
+    <span id="meta">subscription: <span id="sub">…</span> · <span id="updated">–</span></span>
+    <label>Cost window
+      <select id="days">
+        <option value="7">7d</option>
+        <option value="30" selected>30d</option>
+        <option value="90">90d</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="auto" checked> auto</label>
     <button id="refresh">Refresh</button>
   </div>
 </header>
+<div class="banner warn" id="banner"></div>
 <main>
   <div class="cards" id="cards">
     <div class="card"><div class="k">Resource groups</div><div class="v" id="c-rg">–</div></div>
-    <div class="card"><div class="k">Total cost (30d)</div><div class="v" id="c-cost">–</div></div>
-    <div class="card"><div class="k">Activity (24h)</div><div class="v" id="c-act">–</div></div>
+    <div class="card"><div class="k">Total cost</div><div class="v" id="c-cost">–</div></div>
+    <div class="card"><div class="k">Activity</div><div class="v" id="c-act">–</div></div>
   </div>
 
-  <section><h2>Resource groups</h2><div id="rg"><p class="loading">Loading…</p></div></section>
-  <section><h2>Cost by resource group (30d)</h2><div id="cost"><p class="loading">Loading…</p></div></section>
-  <section><h2>Activity log (24h)</h2><div id="logs"><p class="loading">Loading…</p></div></section>
+  <section>
+    <div class="section-head">
+      <h2>Resource groups</h2>
+      <input type="search" id="rg-search" placeholder="filter…">
+    </div>
+    <div id="rg"><p class="loading">Loading…</p></div>
+  </section>
+  <section><h2>Cost by resource group</h2><div id="cost"><p class="loading">Loading…</p></div></section>
+  <section><h2>Activity log</h2><div id="logs"><p class="loading">Loading…</p></div></section>
 </main>
 <script>
 const COLS = {
@@ -77,14 +102,35 @@ function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<'
 
 function fmtTs(iso){ try { return new Date(iso).toLocaleString(); } catch { return iso; } }
 
-async function fill(id, url, render){
+function stamp(){
+  document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+}
+
+async function fill(id, url, render, searchId){
   const el = document.getElementById(id);
   try {
     const r = await fetch(url);
     const data = await r.json();
-    if (data.error) { el.innerHTML = '<p class="err">'+esc(data.error)+'</p>'; return; }
+    if (data.error) {
+      if (data.code === 'not_configured' || data.code === 'auth_error') {
+        showBanner(data.error);
+        el.innerHTML = '<p class="muted">Check the banner above for details.</p>';
+        return;
+      }
+      el.innerHTML = '<p class="err">'+esc(data.error)+'</p>'; return;
+    }
+    if (searchId) {
+      const q = (document.getElementById(searchId).value || '').toLowerCase();
+      if (q) data = data.filter(d => JSON.stringify(d).toLowerCase().includes(q));
+    }
     render(el, data);
+    stamp();
   } catch(e){ el.innerHTML = '<p class="err">'+esc(e)+'</p>'; }
+}
+
+function showBanner(msg){
+  const b = document.getElementById('banner');
+  b.textContent = '⚠ ' + msg;
 }
 
 function renderRg(el, data){
@@ -118,56 +164,170 @@ function renderLogs(el, data){
 }
 
 async function loadAll(){
-  // subscription id + summary
+  const btn = document.getElementById('refresh');
+  btn.disabled = true; btn.textContent = 'Refreshing…';
   try {
     const s = await (await fetch('/api/summary')).json();
-    document.getElementById('sub').textContent = s.subscription_id || '?';
-    document.getElementById('c-rg').textContent = s.resource_group_count ?? '–';
-    document.getElementById('c-cost').textContent = s.total_cost != null ? s.total_cost.toFixed(2)+' '+(s.currency||'') : '–';
-    document.getElementById('c-act').textContent = s.activity_count ?? '–';
-  } catch(e){ /* leave placeholders */ }
+    if (s.error) {
+      if (s.code === 'not_configured') {
+        showBanner(s.error);
+      } else {
+        document.getElementById('banner').textContent = '';
+      }
+      document.getElementById('sub').textContent = '?';
+      document.getElementById('c-rg').textContent = '–';
+      document.getElementById('c-cost').textContent = '–';
+      document.getElementById('c-act').textContent = '–';
+    } else {
+      showBanner('');
+      document.getElementById('sub').textContent = s.subscription_id || '?';
+      document.getElementById('c-rg').textContent = s.resource_group_count ?? '–';
+      document.getElementById('c-cost').textContent = s.total_cost != null ? s.total_cost.toFixed(2)+' '+(s.currency||'') : '–';
+      document.getElementById('c-act').textContent = s.activity_count ?? '–';
+    }
 
-  fill('rg', '/api/resources', renderRg);
-  fill('cost', '/api/costs', renderCost);
-  fill('logs', '/api/logs', renderLogs);
+    const days = document.getElementById('days').value;
+    fill('rg', '/api/resources', renderRg, 'rg-search');
+    fill('cost', '/api/costs?days='+days, renderCost);
+    fill('logs', '/api/logs', renderLogs);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Refresh';
+  }
 }
 
+let timer = null;
+function setupAuto(){
+  if (timer) clearInterval(timer);
+  const on = document.getElementById('auto').checked;
+  if (on) timer = setInterval(loadAll, 60000);
+}
+document.getElementById('auto').addEventListener('change', setupAuto);
 document.getElementById('refresh').addEventListener('click', loadAll);
+document.getElementById('days').addEventListener('change', loadAll);
+document.getElementById('rg-search').addEventListener('input', () => fill('rg', '/api/resources', renderRg, 'rg-search'));
 loadAll();
-setInterval(loadAll, 60000); // auto-refresh every minute
+setupAuto();
 </script>
 </body>
 </html>
 """
 
 
-def _safe(fn):
+_NOT_CONFIGURED = {
+    "error": "Azure credentials are not configured. Set AZURE_TENANT_ID, "
+             "AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and AZURE_SUBSCRIPTION_ID.",
+    "code": "not_configured",
+}
+
+
+def _load_cfg(config_provider: Callable[[], AzureConfig] | None):
+    """Resolve the AzureConfig, or return None when not configured."""
+    if config_provider is not None:
+        try:
+            return config_provider()
+        except Exception:
+            return None
+    try:
+        return load_config()
+    except Exception:
+        return None
+
+
+def _classify_error(exc: Exception) -> tuple[dict, int]:
+    """Turn a data-fetch exception into a friendly, UI-classifiable payload.
+
+    Azure auth/permission failures (401/403, expired or wrong-tenant tokens,
+    missing roles) are reported with a dedicated ``auth_error`` code and a 503
+    so the dashboard can show an actionable banner instead of a raw API blob.
+    Any other failure falls through to a generic 500.
+    """
+    msg = str(exc)
+    lowered = msg.lower()
+    auth_signals = (
+        "401" in msg,
+        "403" in msg,
+        "invalidauthenticationtoken" in lowered,
+        "authorizationfailed" in lowered,
+        "authentication failed" in lowered,
+        "forbidden" in lowered,
+        "unauthorized" in lowered,
+    )
+    if any(auth_signals):
+        return {
+            "error": "Azure rejected the request — check that the service "
+                     "principal's tenant matches the subscription and that it "
+                     "has Reader / Cost Management Reader roles. "
+                     f"({msg[:160]})",
+            "code": "auth_error",
+        }, 503
+    # Cost Management has no billing record for this subscription (typical right
+    # after a tenant move, or when the SP lacks the Cost Management Reader role).
+    if "getazuresubscriptionsbyid" in lowered or "costmanagement" in lowered:
+        return {
+            "error": "Azure Cost Management has no billing data for this "
+                     "subscription yet. This commonly happens just after a "
+                     "subscription is moved to a new tenant (data can take "
+                     "hours to propagate) or when the service principal lacks "
+                     "the Cost Management Reader role. "
+                     f"({msg[:160]})",
+            "code": "cost_data_unavailable",
+        }, 503
+    # Activity-log resource-type / API-version mismatch.
+    if "invalidresourcetype" in lowered and "insights" in lowered:
+        return {
+            "error": "The activity-log query used an unsupported API version. "
+                     "This is a bug in Azure-Inspect — please report it. "
+                     f"({msg[:160]})",
+            "code": "log_query_error",
+        }, 503
+    return {"error": msg}, 500
+
+
+def _safe(fn, config_provider=None):
     """Wrap a data-fetching callable; return (payload, status).
 
     On success: returns (payload_dict, 200).
-    On exception: returns ({"error": message}, 500).
-
-    Flask serializes the dict to JSON and honors the status code when the
-    caller returns the tuple directly (i.e. ``return _safe(_compute)``).
+    When Azure credentials are missing: returns the not-configured payload
+    with a 503 so the dashboard can show a friendly banner instead of a raw
+    error box.
+    On an Azure auth/permission failure: returns a classified ``auth_error``
+    payload with a 503 so the UI can show an actionable banner.
+    On any other exception: returns ({"error": message}, 500).
     """
+    cfg = _load_cfg(config_provider)
+    if cfg is None:
+        return dict(_NOT_CONFIGURED), 503
     try:
-        return fn(), 200
+        return fn(cfg), 200
     except Exception as exc:  # surface API errors to the dashboard
-        return {"error": str(exc)}, 500
+        return _classify_error(exc)
 
 
-def create_app(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -> Flask:
+def _coerce_days(raw: str | None, default: int = 30) -> int:
+    """Parse the ?days= query param into a safe int (7/30/90 clamped)."""
+    try:
+        d = int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        return default
+    if d not in (7, 30, 90):
+        return default
+    return d
+
+
+def create_app(
+    config_provider: Optional[Callable[[], AzureConfig]] = None,
+    debug: bool = False,
+) -> Flask:
     """Build and return the Flask application.
 
     Args:
-        host: bind host (default 127.0.0.1).
-        port: bind port (default 5000) — informational; the app object is
-            returned and run by the caller.
+        config_provider: callable returning an ``AzureConfig``. When omitted,
+            the app falls back to ``load_config()`` (env/.env). Injecting a
+            provider keeps the app testable and lets callers supply config
+            without touching the environment.
         debug: Flask debug mode.
     """
     app = Flask(__name__)
-    app.config["HOST"] = host
-    app.config["PORT"] = port
 
     @app.route("/")
     def index():
@@ -179,13 +339,11 @@ def create_app(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -
 
     @app.route("/api/summary")
     def api_summary():
-        def _compute():
-            cfg = load_config()
+        def _compute(cfg):
             rgs = list_resource_groups(cfg)
-            costs = cost_by_resource_group(cfg)
+            costs = cost_by_resource_group(cfg, from_date=date_window(30))
             total = sum(c.cost for c in costs)
             currency = costs[0].currency if costs else ""
-            # activity count uses a lightweight fetch window
             logs = get_activity_log(cfg, hours=24)
             return {
                 "subscription_id": cfg.subscription_id,
@@ -194,12 +352,11 @@ def create_app(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -
                 "currency": currency,
                 "activity_count": len(logs),
             }
-        return _safe(_compute)
+        return _safe(_compute, config_provider)
 
     @app.route("/api/resources")
     def api_resources():
-        def _compute():
-            cfg = load_config()
+        def _compute(cfg):
             return [
                 {
                     "name": rg.name,
@@ -208,26 +365,25 @@ def create_app(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -
                 }
                 for rg in list_resource_groups(cfg)
             ]
-        return _safe(_compute)
+        return _safe(_compute, config_provider)
 
     @app.route("/api/costs")
     def api_costs():
-        def _compute():
-            cfg = load_config()
+        days = _coerce_days(request.args.get("days"))
+        def _compute(cfg):
             return [
                 {
                     "resource_group": c.resource_group,
                     "cost": c.cost,
                     "currency": c.currency,
                 }
-                for c in cost_by_resource_group(cfg)
+                for c in cost_by_resource_group(cfg, from_date=date_window(days))
             ]
-        return _safe(_compute)
+        return _safe(_compute, config_provider)
 
     @app.route("/api/logs")
     def api_logs():
-        def _compute():
-            cfg = load_config()
+        def _compute(cfg):
             return [
                 {
                     "event_timestamp": e.event_timestamp.isoformat(),
@@ -238,9 +394,15 @@ def create_app(host: str = "127.0.0.1", port: int = 5000, debug: bool = False) -
                 }
                 for e in get_activity_log(cfg)
             ]
-        return _safe(_compute)
+        return _safe(_compute, config_provider)
 
     return app
+
+
+def date_window(days: int):
+    """Return the ``from_date`` (date) for a trailing ``days`` window."""
+    from datetime import date, timedelta
+    return date.today() - timedelta(days=days)
 
 
 if __name__ == "__main__":

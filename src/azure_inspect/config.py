@@ -14,6 +14,10 @@ from dotenv import load_dotenv
 # Azure Resource Manager REST API version used across calls.
 ARM_API_VERSION = "2024-03-01"
 
+# Activity Log (Microsoft.Insights/eventLogs) uses a different, stable API
+# version — the ARM one above returns InvalidResourceType for this resource type.
+ACTIVITY_LOG_API_VERSION = "2017-03-01-preview"
+
 # Where load_config looks for the .env file when not already in the environment.
 DEFAULT_ENV_PATH = Path.cwd() / ".env"
 
