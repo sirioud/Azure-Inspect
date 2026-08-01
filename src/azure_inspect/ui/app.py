@@ -260,6 +260,26 @@ def _classify_error(exc: Exception) -> tuple[dict, int]:
                      f"({msg[:160]})",
             "code": "auth_error",
         }, 503
+    # Cost Management has no billing record for this subscription (typical right
+    # after a tenant move, or when the SP lacks the Cost Management Reader role).
+    if "getazuresubscriptionsbyid" in lowered or "costmanagement" in lowered:
+        return {
+            "error": "Azure Cost Management has no billing data for this "
+                     "subscription yet. This commonly happens just after a "
+                     "subscription is moved to a new tenant (data can take "
+                     "hours to propagate) or when the service principal lacks "
+                     "the Cost Management Reader role. "
+                     f"({msg[:160]})",
+            "code": "cost_data_unavailable",
+        }, 503
+    # Activity-log resource-type / API-version mismatch.
+    if "invalidresourcetype" in lowered and "insights" in lowered:
+        return {
+            "error": "The activity-log query used an unsupported API version. "
+                     "This is a bug in Azure-Inspect — please report it. "
+                     f"({msg[:160]})",
+            "code": "log_query_error",
+        }, 503
     return {"error": msg}, 500
 
 

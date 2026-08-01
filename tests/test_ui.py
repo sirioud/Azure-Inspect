@@ -166,3 +166,27 @@ def test_generic_error_stays_500():
         r = _client().get("/api/resources")
     assert r.status_code == 500
     assert r.get_json()["error"] == "boom"
+
+
+def test_cost_data_unavailable_classified():
+    """A Cost Management 'subscription not found' response is classified friendly."""
+    exc = RuntimeError(
+        "POST .../Microsoft.CostManagement/query failed: 404 "
+        "{\"error\":{\"code\":\"NotFound\",\"message\":\"GetAzureSubscriptionsById returns null\"}}"
+    )
+    with mock.patch("azure_inspect.ui.app.cost_by_resource_group", side_effect=exc):
+        r = _client().get("/api/costs?days=30")
+    assert r.status_code == 503
+    assert r.get_json()["code"] == "cost_data_unavailable"
+
+
+def test_log_query_error_classified():
+    """An activity-log InvalidResourceType is classified as a log_query_error."""
+    exc = RuntimeError(
+        "GET .../Microsoft.Insights/eventlogs failed: 404 "
+        "{\"error\":{\"code\":\"InvalidResourceType\"}}"
+    )
+    with mock.patch("azure_inspect.ui.app.get_activity_log", side_effect=exc):
+        r = _client().get("/api/logs")
+    assert r.status_code == 503
+    assert r.get_json()["code"] == "log_query_error"
