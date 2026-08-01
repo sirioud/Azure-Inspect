@@ -5,10 +5,17 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from ._http import azure_get
-from .config import ARM_API_VERSION, ACTIVITY_LOG_API_VERSION, AzureConfig
+from .config import ACTIVITY_LOG_API_VERSION, AzureConfig
 from .models import ActivityEvent
 
 _MONITOR_URL = "https://management.azure.com"
+
+
+def _build_filter(start: datetime, end: datetime) -> str:
+    return (
+        f"eventTimestamp ge '{start.isoformat()}'"
+        f" and eventTimestamp le '{end.isoformat()}'"
+    )
 
 
 def get_activity_log(
@@ -17,10 +24,10 @@ def get_activity_log(
 ) -> list[ActivityEvent]:
     """Return activity-log events from the past `hours` for the subscription.
 
-    Uses the tenant/root-level activity-log endpoint
-    (``/providers/Microsoft.Insights/eventLogs``) with ``api-version=2017-03-01-preview``,
-    scoping the OData ``$filter`` to this subscription via ``resourceId``. The
-    subscription-scoped path is deprecated and returns InvalidResourceType.
+    The activity log is a tenant-level resource, so we first try the
+    subscription-scoped endpoint and fall back to the tenant-scoped endpoint
+    (filtering by the subscription's ``resourceId``) when the subscription
+    scope is rejected. Both use a stable api-version.
 
     The OData ``$filter`` is URL-encoded so timestamps with special characters
     (``+``, ``:``) don't break the query.
@@ -30,15 +37,30 @@ def get_activity_log(
     """
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=hours)
-    filter_expr = (
-        f"eventTimestamp ge '{start.isoformat()}'"
-        f" and eventTimestamp le '{end.isoformat()}'"
-        f" and resourceId eq '/subscriptions/{cfg.subscription_id}'"
+    filt = _build_filter(start, end)
+    encoded = quote(filt)
+
+    # Preferred: subscription-scoped query.
+    sub_url = (
+        f"{_MONITOR_URL}/subscriptions/{cfg.subscription_id}"
+        f"/providers/Microsoft.Insights/eventlogs?api-version={ACTIVITY_LOG_API_VERSION}"
+        f"&$filter={encoded}"
     )
-    url = (
-        f"{_MONITOR_URL}/providers/Microsoft.Insights/eventLogs"
-        f"?api-version={ACTIVITY_LOG_API_VERSION}"
-        f"&$filter={quote(filter_expr)}"
-    )
-    items = azure_get(cfg, url)
-    return [ActivityEvent.from_api(item) for item in items]
+    try:
+        items = azure_get(cfg, sub_url)
+        return [ActivityEvent.from_api(item) for item in items]
+    except RuntimeError as sub_err:
+        # Fall back to the tenant-scoped endpoint (activity logs live at tenant
+        # scope); Azure redirects here and requires read at tenant/directory
+        # scope for this to succeed.
+        tenant_filt = f"{filt} and resourceId eq '/subscriptions/{cfg.subscription_id}'"
+        tenant_url = (
+            f"{_MONITOR_URL}/providers/Microsoft.Insights/eventlogs"
+            f"?api-version={ACTIVITY_LOG_API_VERSION}&$filter={quote(tenant_filt)}"
+        )
+        try:
+            items = azure_get(cfg, tenant_url)
+            return [ActivityEvent.from_api(item) for item in items]
+        except RuntimeError:
+            # Surface the original subscription-scope error as the primary cause.
+            raise sub_err
