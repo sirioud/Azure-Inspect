@@ -112,9 +112,9 @@ async function fill(id, url, render, searchId){
     const r = await fetch(url);
     const data = await r.json();
     if (data.error) {
-      if (data.code === 'not_configured') {
+      if (data.code === 'not_configured' || data.code === 'auth_error') {
         showBanner(data.error);
-        el.innerHTML = '<p class="muted">Configure Azure credentials to see data.</p>';
+        el.innerHTML = '<p class="muted">Check the banner above for details.</p>';
         return;
       }
       el.innerHTML = '<p class="err">'+esc(data.error)+'</p>'; return;
@@ -233,6 +233,36 @@ def _load_cfg(config_provider: Callable[[], AzureConfig] | None):
         return None
 
 
+def _classify_error(exc: Exception) -> tuple[dict, int]:
+    """Turn a data-fetch exception into a friendly, UI-classifiable payload.
+
+    Azure auth/permission failures (401/403, expired or wrong-tenant tokens,
+    missing roles) are reported with a dedicated ``auth_error`` code and a 503
+    so the dashboard can show an actionable banner instead of a raw API blob.
+    Any other failure falls through to a generic 500.
+    """
+    msg = str(exc)
+    lowered = msg.lower()
+    auth_signals = (
+        "401" in msg,
+        "403" in msg,
+        "invalidauthenticationtoken" in lowered,
+        "authorizationfailed" in lowered,
+        "authentication failed" in lowered,
+        "forbidden" in lowered,
+        "unauthorized" in lowered,
+    )
+    if any(auth_signals):
+        return {
+            "error": "Azure rejected the request — check that the service "
+                     "principal's tenant matches the subscription and that it "
+                     "has Reader / Cost Management Reader roles. "
+                     f"({msg[:160]})",
+            "code": "auth_error",
+        }, 503
+    return {"error": msg}, 500
+
+
 def _safe(fn, config_provider=None):
     """Wrap a data-fetching callable; return (payload, status).
 
@@ -240,6 +270,8 @@ def _safe(fn, config_provider=None):
     When Azure credentials are missing: returns the not-configured payload
     with a 503 so the dashboard can show a friendly banner instead of a raw
     error box.
+    On an Azure auth/permission failure: returns a classified ``auth_error``
+    payload with a 503 so the UI can show an actionable banner.
     On any other exception: returns ({"error": message}, 500).
     """
     cfg = _load_cfg(config_provider)
@@ -248,7 +280,7 @@ def _safe(fn, config_provider=None):
     try:
         return fn(cfg), 200
     except Exception as exc:  # surface API errors to the dashboard
-        return {"error": str(exc)}, 500
+        return _classify_error(exc)
 
 
 def _coerce_days(raw: str | None, default: int = 30) -> int:

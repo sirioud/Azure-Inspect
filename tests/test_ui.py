@@ -144,3 +144,25 @@ def test_costs_invalid_days_falls_back_to_30():
         r = _client().get("/api/costs?days=999")
     assert r.status_code == 200
     assert captured["from_date"] == date.today() - timedelta(days=30)
+
+
+def test_auth_error_classified_as_auth_error():
+    """A 401/403 from Azure must surface as a classified auth_error, not a raw 500."""
+    exc = RuntimeError(
+        "GET https://management.azure.com/.../resourcegroups failed: 401 "
+        "{\"error\":{\"code\":\"InvalidAuthenticationTokenTenant\"}}"
+    )
+    with mock.patch("azure_inspect.ui.app.list_resource_groups", side_effect=exc):
+        r = _client().get("/api/resources")
+    assert r.status_code == 503
+    body = r.get_json()
+    assert body["code"] == "auth_error"
+    assert "tenant" in body["error"].lower()
+
+
+def test_generic_error_stays_500():
+    """Non-auth exceptions should still return a generic 500."""
+    with mock.patch("azure_inspect.ui.app.list_resource_groups", side_effect=ValueError("boom")):
+        r = _client().get("/api/resources")
+    assert r.status_code == 500
+    assert r.get_json()["error"] == "boom"
