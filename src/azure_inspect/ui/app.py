@@ -19,102 +19,135 @@ _INDEX_HTML = """<!doctype html>
 <title>Azure-Inspect</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0e17; --panel: rgba(22,27,34,.72); --panel-solid: #11161f;
-    --border: rgba(255,255,255,.08); --fg: #e6edf3; --muted: #8b98a9;
-    --accent: #58a6ff; --accent2: #39d3ff; --green: #3fb950; --red: #ff6b6b;
-    --radius: 16px; --shadow: 0 8px 30px rgba(0,0,0,.35);
+    --bg: #070a12; --panel: rgba(20,26,38,.6); --panel-solid: #0e131d;
+    --border: rgba(255,255,255,.09); --fg: #eaf1f8; --muted: #8593a6;
+    --accent: #58a6ff; --accent2: #7c5cff; --cyan: #39d3ff; --green: #3ef0a3;
+    --red: #ff6b81; --radius: 18px; --shadow: 0 10px 40px rgba(0,0,0,.45);
   }
   * { box-sizing: border-box; }
   html, body { margin:0; }
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif; color: var(--fg); min-height:100vh;
+    background: var(--bg); overflow-x:hidden; -webkit-font-smoothing: antialiased;
+  }
+  /* ---- animated aurora background ---- */
+  .aurora { position: fixed; inset: -20% -20% -20% -20%; z-index:-2; filter: blur(70px); opacity:.85;
     background:
-      radial-gradient(1200px 600px at 85% -10%, rgba(88,166,255,.12), transparent 60%),
-      radial-gradient(900px 500px at 10% 110%, rgba(57,211,255,.08), transparent 55%),
-      var(--bg);
-    color: var(--fg); min-height: 100vh; -webkit-font-smoothing: antialiased;
+      radial-gradient(40% 50% at 20% 30%, rgba(88,166,255,.30), transparent 60%),
+      radial-gradient(45% 55% at 80% 25%, rgba(124,92,255,.28), transparent 60%),
+      radial-gradient(50% 60% at 55% 85%, rgba(57,211,255,.22), transparent 60%);
+    animation: drift 18s ease-in-out infinite alternate;
   }
+  @keyframes drift {
+    0%   { transform: translate3d(-3%, -2%, 0) scale(1.05) rotate(0deg); }
+    50%  { transform: translate3d(4%, 3%, 0) scale(1.15) rotate(8deg); }
+    100% { transform: translate3d(-2%, 4%, 0) scale(1.08) rotate(-6deg); }
+  }
+  .grain { position: fixed; inset:0; z-index:-1; pointer-events:none; opacity:.035;
+    background-image: radial-gradient(rgba(255,255,255,.9) 1px, transparent 1px); background-size: 3px 3px; }
+
   header {
-    position: sticky; top:0; z-index: 10; display:flex; align-items:center; justify-content:space-between;
-    padding: 1rem 1.8rem; border-bottom: 1px solid var(--border);
-    background: rgba(10,14,23,.6); backdrop-filter: blur(14px); flex-wrap:wrap; gap:.6rem;
+    position: sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    padding: 1rem 1.9rem; border-bottom:1px solid var(--border);
+    background: rgba(7,10,18,.55); backdrop-filter: blur(18px) saturate(140%);
+    flex-wrap:wrap; gap:.7rem;
   }
-  .brand { display:flex; align-items:center; gap:.7rem; }
-  .brand svg { width:30px; height:30px; filter: drop-shadow(0 0 8px rgba(88,166,255,.5)); }
-  .brand h1 { margin:0; font-size:1.25rem; font-weight:800; letter-spacing:-.02em;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text; background-clip:text; -webkit-text-fill-color: transparent; }
+  .brand { display:flex; align-items:center; gap:.75rem; }
+  .brand svg { width:32px; height:32px; animation: float 5s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-3px); } }
+  .brand h1 { margin:0; font-size:1.3rem; font-weight:800; letter-spacing:-.03em;
+    background: linear-gradient(100deg, var(--accent), var(--cyan) 45%, var(--accent2));
+    background-size: 200% auto; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    animation: shimmer 6s linear infinite; }
+  @keyframes shimmer { to { background-position: 200% center; } }
   #controls { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
-  #meta { font-size:.8rem; color:var(--muted); }
-  #meta b { color: var(--fg); font-weight:600; }
+  #meta { font-size:.8rem; color:var(--muted); display:flex; align-items:center; gap:.5rem; }
+  #meta b { color:var(--fg); font-weight:600; font-family:'JetBrains Mono',monospace; font-size:.74rem; }
+  .live { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(62,240,163,.6); animation: pulse 1.8s infinite; }
+  @keyframes pulse { 70% { box-shadow:0 0 0 7px rgba(62,240,163,0); } 100% { box-shadow:0 0 0 0 rgba(62,240,163,0); } }
   select, button {
-    background: var(--panel-solid); color: var(--fg); border: 1px solid var(--border);
-    border-radius: 10px; padding:.45rem .8rem; cursor:pointer; font:inherit; font-size:.82rem;
-    transition: border-color .15s, transform .05s, box-shadow .15s;
+    background: var(--panel-solid); color:var(--fg); border:1px solid var(--border); border-radius:11px;
+    padding:.45rem .85rem; cursor:pointer; font:inherit; font-size:.82rem; transition: all .16s ease;
   }
-  button:hover, select:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88,166,255,.12); }
-  button:active { transform: translateY(1px); }
-  button:disabled { opacity:.5; cursor:default; box-shadow:none; }
+  button:hover, select:hover { border-color: var(--accent); box-shadow:0 0 0 3px rgba(88,166,255,.14); transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button:disabled { opacity:.5; cursor:default; transform:none; box-shadow:none; }
   input[type=checkbox]{ accent-color: var(--accent); }
-  main { padding: 1.8rem; max-width: 1180px; margin: 0 auto; }
-  .banner {
-    padding:.8rem 1rem; border-radius: 12px; margin-bottom:1.4rem; font-size:.85rem;
-    display:none; align-items:center; gap:.5rem; border:1px solid rgba(255,107,107,.4);
-    background: rgba(255,107,107,.1); color: var(--red);
-  }
+  main { padding:1.9rem; max-width:1180px; margin:0 auto; }
+
+  .banner { padding:.8rem 1.1rem; border-radius:13px; margin-bottom:1.5rem; font-size:.85rem;
+    display:none; align-items:center; gap:.5rem; border:1px solid rgba(255,107,129,.4);
+    background: rgba(255,107,129,.1); color:var(--red); animation: pop .3s ease; }
   .banner.warn { display:flex; }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.8rem; }
+  @keyframes pop { from { transform: translateY(-6px); opacity:0; } }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:1.05rem; margin-bottom:1.9rem; }
   .card {
-    background: var(--panel); border:1px solid var(--border); border-radius: var(--radius);
-    padding: 1.1rem 1.2rem; box-shadow: var(--shadow); backdrop-filter: blur(8px);
-    position:relative; overflow:hidden;
+    position:relative; overflow:hidden; border-radius:var(--radius); padding:1.2rem 1.3rem;
+    background: var(--panel); border:1px solid var(--border); box-shadow: var(--shadow);
+    backdrop-filter: blur(12px); transition: transform .25s ease, box-shadow .25s ease, border-color .25s;
   }
-  .card::after { content:""; position:absolute; inset:0; background: linear-gradient(135deg, rgba(88,166,255,.06), transparent 50%); pointer-events:none; }
-  .card .k { font-size:.72rem; color: var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
-  .card .v { font-size:1.9rem; font-weight:800; margin-top:.35rem; letter-spacing:-.02em; }
-  .card.accent .v { background: linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-  section { margin-bottom: 1.8rem; background: var(--panel); border:1px solid var(--border); border-radius: var(--radius);
-    padding: 1.1rem 1.2rem; box-shadow: var(--shadow); backdrop-filter: blur(8px); }
-  .section-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.8rem; }
-  h2 { font-size:.95rem; margin:0; font-weight:700; display:flex; align-items:center; gap:.5rem; }
-  h2 .dot { width:8px; height:8px; border-radius:50%; background: var(--accent); box-shadow:0 0 8px var(--accent); }
-  input[type=search] { background: var(--panel-solid); color: var(--fg); border:1px solid var(--border); border-radius:10px; padding:.35rem .7rem; font:inherit; min-width:180px; font-size:.82rem; }
-  table { border-collapse: collapse; width:100%; font-size:.85rem; }
-  th, td { border-bottom: 1px solid var(--border); padding: .55rem .7rem; text-align:left; }
-  th { color: var(--muted); font-weight:600; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em; }
-  tbody tr { transition: background .12s; }
-  tbody tr:hover { background: rgba(255,255,255,.03); }
-  .bar-wrap { width:140px; }
-  .bar { height:9px; border-radius:6px; background: linear-gradient(90deg, var(--accent), var(--accent2)); box-shadow: 0 0 10px rgba(57,211,255,.4); }
-  .pill { padding:2px 9px; border-radius:999px; font-size:.74rem; font-weight:600; }
-  .ok { background: rgba(63,185,80,.15); color: var(--green); }
-  .fail { background: rgba(255,107,107,.15); color: var(--red); }
-  .state { background: rgba(88,166,255,.15); color: var(--accent); }
-  .loc { font-size:.72rem; color: var(--muted); }
-  .err { color: var(--red); padding: 1rem; background: rgba(255,107,107,.08); border-radius:10px; border:1px solid rgba(255,107,107,.25); }
-  .muted { color: var(--muted); }
-  .loading { color: var(--muted); font-style: italic; display:flex; align-items:center; gap:.6rem; padding:.4rem 0; }
-  .spin { width:14px; height:14px; border:2px solid var(--border); border-top-color: var(--accent); border-radius:50%; animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  footer { text-align:center; color: var(--muted); font-size:.75rem; padding: 1.5rem; }
-  a { color: var(--accent); text-decoration:none; }
-  @media (max-width: 640px) { main { padding: 1rem; } header { padding:.8rem 1rem; } }
+  .card::before { content:""; position:absolute; inset:0; border-radius:inherit; padding:1px;
+    background: linear-gradient(135deg, rgba(88,166,255,.5), transparent 45%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; opacity:.6; pointer-events:none; }
+  .card:hover { transform: translateY(-5px); box-shadow: 0 18px 50px rgba(88,166,255,.18); border-color: rgba(88,166,255,.35); }
+  .card .k { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
+  .card .v { font-size:2.1rem; font-weight:800; margin-top:.4rem; letter-spacing:-.03em;
+    background: linear-gradient(100deg, var(--accent), var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+
+  section { margin-bottom:1.9rem; border-radius:var(--radius); padding:1.2rem 1.35rem; box-shadow:var(--shadow);
+    background: var(--panel); border:1px solid var(--border); backdrop-filter: blur(12px);
+    border-top:1px solid rgba(88,166,255,.18); }
+  .section-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem; }
+  h2 { font-size:.95rem; margin:0; font-weight:700; display:flex; align-items:center; gap:.55rem; }
+  h2 .dot { width:9px; height:9px; border-radius:50%; background: linear-gradient(135deg,var(--accent),var(--cyan)); box-shadow:0 0 10px var(--accent); }
+  input[type=search] { background:var(--panel-solid); color:var(--fg); border:1px solid var(--border); border-radius:11px;
+    padding:.4rem .75rem; font:inherit; min-width:185px; font-size:.82rem; }
+  input[type=search]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(88,166,255,.14); }
+
+  table { border-collapse:collapse; width:100%; font-size:.85rem; }
+  th, td { border-bottom:1px solid rgba(255,255,255,.06); padding:.6rem .75rem; text-align:left; }
+  th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+  tbody tr { opacity:0; animation: fadein .4s ease forwards; transition: background .12s; }
+  tbody tr:hover { background: rgba(255,255,255,.035); }
+  @keyframes fadein { to { opacity:1; } }
+
+  .bar-wrap { width:150px; }
+  .bar { height:10px; border-radius:7px; background: linear-gradient(90deg, var(--accent), var(--cyan)); box-shadow:0 0 12px rgba(57,211,255,.45); transition: width .6s cubic-bezier(.2,.8,.2,1); }
+  .pill { padding:2px 10px; border-radius:999px; font-size:.73rem; font-weight:600; }
+  .ok { background: rgba(62,240,163,.15); color:var(--green); }
+  .fail { background: rgba(255,107,129,.15); color:var(--red); }
+  .state { background: rgba(88,166,255,.15); color:var(--accent); }
+  .loc { font-size:.72rem; color:var(--muted); }
+  .err { color:var(--red); padding:1rem; background: rgba(255,107,129,.08); border-radius:11px; border:1px solid rgba(255,107,129,.25); }
+  .muted { color:var(--muted); }
+
+  .loading { display:flex; flex-direction:column; gap:.6rem; padding:.3rem 0; }
+  .sk { height:14px; border-radius:6px; background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.14), rgba(255,255,255,.06));
+    background-size:200% 100%; animation: sk 1.2s infinite; }
+  @keyframes sk { to { background-position:-200% 0; } }
+
+  footer { text-align:center; color:var(--muted); font-size:.74rem; padding:1.6rem; }
+  @media (max-width:640px){ main{padding:1rem;} header{padding:.8rem 1rem;} }
 </style>
 </head>
 <body>
+<div class="aurora"></div>
+<div class="grain"></div>
 <header>
   <div class="brand">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 16a4 4 0 0 1 .8-7.9 5 5 0 0 1 9.7-1.3A3.5 3.5 0 0 1 18 16H6Z" stroke="url(#g)" stroke-width="1.6" stroke-linejoin="round"/>
-      <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient></defs>
+      <path d="M6 16a4 4 0 0 1 .8-7.9 5 5 0 0 1 9.7-1.3A3.5 3.5 0 0 1 18 16H6Z" stroke="url(#g)" stroke-width="1.7" stroke-linejoin="round"/>
+      <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs>
     </svg>
     <h1>Azure-Inspect</h1>
   </div>
   <div id="controls">
-    <span id="meta">sub <b id="sub">…</b> · <span id="updated">–</span></span>
+    <span id="meta"><span class="live"></span> <b id="sub">…</b> · <span id="updated">–</span></span>
     <label>Cost
       <select id="days">
         <option value="7">7d</option>
@@ -129,35 +162,31 @@ _INDEX_HTML = """<!doctype html>
 <div class="banner warn" id="banner"></div>
 <main>
   <div class="cards" id="cards">
-    <div class="card accent"><div class="k">Resource groups</div><div class="v" id="c-rg">–</div></div>
-    <div class="card accent"><div class="k">Total cost</div><div class="v" id="c-cost">–</div></div>
-    <div class="card accent"><div class="k">Activity (24h)</div><div class="v" id="c-act">–</div></div>
+    <div class="card"><div class="k">Resource groups</div><div class="v" id="c-rg">–</div></div>
+    <div class="card"><div class="k">Total cost</div><div class="v" id="c-cost">–</div></div>
+    <div class="card"><div class="k">Activity (24h)</div><div class="v" id="c-act">–</div></div>
   </div>
 
   <section>
-    <div class="section-head">
-      <h2><span class="dot"></span> Resource groups</h2>
-      <input type="search" id="rg-search" placeholder="filter…">
-    </div>
-    <div id="rg"><p class="loading"><span class="spin"></span> Loading…</p></div>
+    <div class="section-head"><h2><span class="dot"></span> Resource groups</h2>
+      <input type="search" id="rg-search" placeholder="filter…"></div>
+    <div id="rg"><div class="loading"><div class="sk" style="width:40%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div></div></div>
   </section>
 
   <section><div class="section-head"><h2><span class="dot"></span> Cost by resource group</h2></div>
-    <div id="cost"><p class="loading"><span class="spin"></span> Loading…</p></div></section>
+    <div id="cost"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></section>
 
   <section><div class="section-head"><h2><span class="dot"></span> Activity log</h2></div>
-    <div id="logs"><p class="loading"><span class="spin"></span> Loading…</p></div></section>
+    <div id="logs"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></section>
 </main>
-<footer>Azure-Inspect · service-principal dashboard</footer>
+<footer>Azure-Inspect · live service-principal dashboard</footer>
 <script>
 function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function fmtTs(iso){ try { return new Date(iso).toLocaleString(); } catch { return iso; } }
 function rel(ts){
-  try { const d = (Date.now() - new Date(ts).getTime())/1000;
-    if (d<60) return d.toFixed(0)+'s ago';
-    if (d<3600) return (d/60).toFixed(0)+'m ago';
-    if (d<86400) return (d/3600).toFixed(0)+'h ago';
-    return (d/86400).toFixed(0)+'d ago';
+  try { const d=(Date.now()-new Date(ts).getTime())/1000;
+    if(d<60) return d.toFixed(0)+'s ago'; if(d<3600) return (d/60).toFixed(0)+'m ago';
+    if(d<86400) return (d/3600).toFixed(0)+'h ago'; return (d/86400).toFixed(0)+'d ago';
   } catch { return ''; }
 }
 function stamp(){ document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString(); }
@@ -165,54 +194,42 @@ function stamp(){ document.getElementById('updated').textContent = 'updated ' + 
 async function fill(id, url, render, searchId){
   const el = document.getElementById(id);
   try {
-    const r = await fetch(url);
-    const data = await r.json();
+    const r = await fetch(url); const data = await r.json();
     if (data.error) {
-      if (data.code === 'not_configured' || data.code === 'auth_error' || data.code === 'cost_data_unavailable') {
-        showBanner(data.error);
-        el.innerHTML = '<p class="muted">Check the banner above.</p>'; return;
+      if (['not_configured','auth_error','cost_data_unavailable'].includes(data.code)) {
+        showBanner(data.error); el.innerHTML = '<p class="muted">Check the banner above.</p>'; return;
       }
       el.innerHTML = '<p class="err">'+esc(data.error)+'</p>'; return;
     }
-    if (searchId) {
-      const q = (document.getElementById(searchId).value || '').toLowerCase();
-      if (q) data = data.filter(d => JSON.stringify(d).toLowerCase().includes(q));
-    }
+    if (searchId) { const q=(document.getElementById(searchId).value||'').toLowerCase(); if(q) data=data.filter(d=>JSON.stringify(d).toLowerCase().includes(q)); }
     render(el, data); stamp();
   } catch(e){ el.innerHTML = '<p class="err">'+esc(e)+'</p>'; }
 }
-
-function showBanner(msg){
-  const b = document.getElementById('banner');
-  b.textContent = '⚠ ' + msg;
-}
+function showBanner(msg){ document.getElementById('banner').textContent = '⚠ ' + msg; }
 
 function renderRg(el, data){
-  if(!data.length){ el.innerHTML = '<p class="muted">No resource groups.</p>'; return; }
-  let rows = data.map(d => '<tr><td><b>'+esc(d.name)+'</b></td><td><span class="loc">'+esc(d.location)+
+  if(!data.length){ el.innerHTML='<p class="muted">No resource groups.</p>'; return; }
+  let rows = data.map((d,i) => '<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(d.name)+'</b></td><td><span class="loc">'+esc(d.location)+
     '</span></td><td><span class="pill state">'+esc(d.provisioning_state)+'</span></td></tr>').join('');
   el.innerHTML = '<table><thead><tr><th>Name</th><th>Location</th><th>State</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
-
 function renderCost(el, data){
-  if(!data.length){ el.innerHTML = '<p class="muted">No cost data.</p>'; return; }
-  const max = Math.max(...data.map(d => d.cost), 0.0001);
-  let rows = data.sort((a,b)=>b.cost-a.cost).map(d => {
-    const pct = Math.max(2, (d.cost / max * 100)).toFixed(0);
-    return '<tr><td><b>'+esc(d.resource_group||'(none)')+'</b></td>'+
+  if(!data.length){ el.innerHTML='<p class="muted">No cost data.</p>'; return; }
+  const max = Math.max(...data.map(d=>d.cost), 0.0001);
+  let rows = data.sort((a,b)=>b.cost-a.cost).map((d,i) => {
+    const pct = Math.max(2,(d.cost/max*100)).toFixed(0);
+    return '<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(d.resource_group||'(none)')+'</b></td>'+
       '<td class="bar-wrap"><div class="bar" style="width:'+pct+'%"></div></td>'+
       '<td>'+Number(d.cost).toFixed(2)+' '+esc(d.currency)+'</td></tr>';
   }).join('');
   el.innerHTML = '<table><thead><tr><th>Resource group</th><th></th><th>Cost</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
-
 function renderLogs(el, data){
-  if(!data.length){ el.innerHTML = '<p class="muted">No recent activity.</p>'; return; }
-  let rows = data.slice(0,60).map(d => {
+  if(!data.length){ el.innerHTML='<p class="muted">No recent activity.</p>'; return; }
+  let rows = data.slice(0,60).map((d,i) => {
     const st = (d.status||'').toLowerCase().includes('fail') ? 'fail' : 'ok';
-    return '<tr><td title="'+esc(fmtTs(d.event_timestamp))+'">'+esc(rel(d.event_timestamp))+'</td>'+
-      '<td>'+esc(d.operation)+'</td><td class="loc">'+esc(d.resource_group||'–')+'</td>'+
-      '<td class="loc">'+esc(d.caller||'–')+'</td>'+
+    return '<tr style="animation-delay:'+(i*30)+'ms"><td title="'+esc(fmtTs(d.event_timestamp))+'">'+esc(rel(d.event_timestamp))+'</td>'+
+      '<td>'+esc(d.operation)+'</td><td class="loc">'+esc(d.resource_group||'–')+'</td><td class="loc">'+esc(d.caller||'–')+'</td>'+
       '<td><span class="pill '+st+'">'+esc(d.status)+'</span></td></tr>';
   }).join('');
   el.innerHTML = '<table><thead><tr><th>When</th><th>Operation</th><th>RG</th><th>Caller</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table>';
@@ -225,10 +242,10 @@ async function loadAll(){
     const s = await (await fetch('/api/summary')).json();
     if (s.error) {
       if (s.code === 'not_configured') showBanner(s.error);
-      document.getElementById('sub').textContent = '?';
-      document.getElementById('c-rg').textContent = '–';
-      document.getElementById('c-cost').textContent = '–';
-      document.getElementById('c-act').textContent = '–';
+      document.getElementById('sub').textContent='?';
+      document.getElementById('c-rg').textContent='–';
+      document.getElementById('c-cost').textContent='–';
+      document.getElementById('c-act').textContent='–';
     } else {
       showBanner('');
       document.getElementById('sub').textContent = s.subscription_id || '?';
@@ -244,16 +261,12 @@ async function loadAll(){
     btn.disabled = false; btn.textContent = '↻ Refresh';
   }
 }
-
 let timer = null;
-function setupAuto(){
-  if (timer) clearInterval(timer);
-  if (document.getElementById('auto').checked) timer = setInterval(loadAll, 60000);
-}
+function setupAuto(){ if(timer) clearInterval(timer); if(document.getElementById('auto').checked) timer=setInterval(loadAll,60000); }
 document.getElementById('auto').addEventListener('change', setupAuto);
 document.getElementById('refresh').addEventListener('click', loadAll);
 document.getElementById('days').addEventListener('change', loadAll);
-document.getElementById('rg-search').addEventListener('input', () => fill('rg', '/api/resources', renderRg, 'rg-search'));
+document.getElementById('rg-search').addEventListener('input', () => fill('rg','/api/resources',renderRg,'rg-search'));
 loadAll();
 setupAuto();
 </script>
