@@ -38,20 +38,15 @@ def test_list_resource_groups_parses_payload(cfg):
              "properties": {"provisioningState": "Succeeded"}},
         ]
     }
-    with mock.patch("azure_inspect.resources.get_access_token", return_value="tok"), \
-         mock.patch("azure_inspect.resources.requests.get") as g:
-        g.return_value.status_code = 200
-        g.return_value.json.return_value = arm
+    with mock.patch("azure_inspect.resources.azure_get", return_value=arm["value"]):
         rgs = resources.list_resource_groups(cfg)
     assert len(rgs) == 1
     assert rgs[0].name == "rg-a"
 
 
 def test_list_resource_groups_http_error(cfg):
-    with mock.patch("azure_inspect.resources.get_access_token", return_value="tok"), \
-         mock.patch("azure_inspect.resources.requests.get") as g:
-        g.return_value.status_code = 403
-        g.return_value.text = "Forbidden"
+    with mock.patch("azure_inspect.resources.azure_get",
+                    side_effect=RuntimeError("403 Forbidden")):
         with pytest.raises(RuntimeError):
             resources.list_resource_groups(cfg)
 
@@ -67,10 +62,7 @@ def test_cost_by_resource_group_parses_rows(cfg):
             "rows": [["rg-a", 12.34, "EUR"], ["rg-b", 5.0, "EUR"]],
         }
     }
-    with mock.patch("azure_inspect.costs.get_access_token", return_value="tok"), \
-         mock.patch("azure_inspect.costs.requests.post") as p:
-        p.return_value.status_code = 200
-        p.return_value.json.return_value = resp
+    with mock.patch("azure_inspect.costs.azure_post_json", return_value=resp):
         result = costs.cost_by_resource_group(cfg)
     assert len(result) == 2
     assert result[0].resource_group == "rg-a"
@@ -85,10 +77,7 @@ def test_get_activity_log_parses_payload(cfg):
                             "caller": "u@x.com", "status": "Succeeded"}},
         ]
     }
-    with mock.patch("azure_inspect.logs.get_access_token", return_value="tok"), \
-         mock.patch("azure_inspect.logs.requests.get") as g:
-        g.return_value.status_code = 200
-        g.return_value.json.return_value = mon
+    with mock.patch("azure_inspect.logs.azure_get", return_value=mon["value"]):
         events = logs.get_activity_log(cfg, hours=24)
     assert len(events) == 1
     assert events[0].caller == "u@x.com"

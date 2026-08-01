@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from urllib.parse import quote
 
-import requests
-
-from .auth import get_access_token
+from ._http import azure_get
 from .config import ARM_API_VERSION, AzureConfig
 from .models import ActivityEvent
 
@@ -19,13 +17,14 @@ def get_activity_log(
 ) -> list[ActivityEvent]:
     """Return activity-log events from the past `hours` for the subscription.
 
+    The OData ``$filter`` is URL-encoded so timestamps with special characters
+    (``+``, ``:``) don't break the query.
+
     Raises:
-        RuntimeError: on non-2xx responses from the Monitor API.
+        RuntimeError: on persistent non-2xx responses from the Monitor API.
     """
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=hours)
-    token = get_access_token(cfg)
-
     filter_expr = (
         f"eventTimestamp ge '{start.isoformat()}'"
         f" and eventTimestamp le '{end.isoformat()}'"
@@ -33,14 +32,7 @@ def get_activity_log(
     url = (
         f"{_MONITOR_URL}/subscriptions/{cfg.subscription_id}"
         f"/providers/Microsoft.Insights/eventLogs?api-version={ARM_API_VERSION}"
-        f"&$filter={filter_expr}"
+        f"&$filter={quote(filter_expr)}"
     )
-    headers = {"Authorization": f"Bearer {token}"}
-    resp = requests.get(url, headers=headers, timeout=30)
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"get_activity_log failed: {resp.status_code} {resp.text}"
-        )
-
-    payload: dict[str, Any] = resp.json()
-    return [ActivityEvent.from_api(item) for item in payload.get("value", [])]
+    items = azure_get(cfg, url)
+    return [ActivityEvent.from_api(item) for item in items]

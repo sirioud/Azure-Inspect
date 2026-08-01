@@ -4,9 +4,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-import requests
-
-from .auth import get_access_token
+from ._http import azure_post_json
 from .config import AzureConfig
 from .models import CostSummary
 
@@ -24,14 +22,13 @@ def cost_by_resource_group(
     Defaults to the trailing 30 days when no window is supplied.
 
     Raises:
-        RuntimeError: on non-2xx responses from the Cost Management API.
+        RuntimeError: on persistent non-2xx responses from the Cost Management API.
     """
     if to_date is None:
         to_date = date.today()
     if from_date is None:
         from_date = to_date - timedelta(days=30)
 
-    token = get_access_token(cfg)
     scope = f"/subscriptions/{cfg.subscription_id}"
     url = (
         f"{_COST_URL}{scope}/providers/Microsoft.CostManagement"
@@ -50,19 +47,14 @@ def cost_by_resource_group(
             "grouping": [{"type": "Dimension", "name": "ResourceGroup"}],
         },
     }
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    resp = requests.post(url, headers=headers, json=body, timeout=30)
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"cost_by_resource_group failed: {resp.status_code} {resp.text}"
-        )
-
-    return _parse_cost_response(resp.json())
+    payload = azure_post_json(cfg, url, body)
+    return _parse_cost_response(payload)
 
 
 def _parse_cost_response(payload: dict[str, Any]) -> list[CostSummary]:
-    rows = payload.get("properties", {}).get("rows", [])
-    columns = [c.get("name") for c in payload.get("properties", {}).get("columns", [])]
+    props = payload.get("properties", {})
+    rows = props.get("rows", [])
+    columns = [c.get("name") for c in props.get("columns", [])]
     cost_idx = columns.index("Cost") if "Cost" in columns else None
     rg_idx = columns.index("ResourceGroup") if "ResourceGroup" in columns else None
     currency_idx = columns.index("Currency") if "Currency" in columns else None
