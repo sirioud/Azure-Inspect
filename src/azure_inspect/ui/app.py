@@ -163,6 +163,7 @@ _INDEX_HTML = """<!doctype html>
     <div class="card"><div class="k">Resource groups</div><div class="v dash" id="c-rg">–</div></div>
     <div class="card"><div class="k">Total cost</div><div class="v dash" id="c-cost">–</div></div>
     <div class="card"><div class="k">Activity (24h)</div><div class="v dash" id="c-act">–</div></div>
+    <div class="card"><div class="k">Governance gaps</div><div class="v dash" id="c-gap">–</div></div>
   </div>
 
   <section>
@@ -176,6 +177,10 @@ _INDEX_HTML = """<!doctype html>
 
   <section><div class="section-head"><h2><span class="dot"></span> Activity log</h2></div>
     <div id="logs"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></section>
+
+  <section><div class="section-head"><h2><span class="dot"></span> Compliance &amp; access posture</h2>
+    <span class="pill state" id="posture-badge">–</span></div>
+    <div id="compliance"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></section>
 </main>
 <footer>Azure-Inspect · live service-principal dashboard</footer>
 <script>
@@ -233,6 +238,31 @@ function renderLogs(el,data){
       '<td><span class="pill '+st+'">'+esc(d.status)+'</span></td></tr>'; }).join('');
   el.innerHTML='<table><thead><tr><th>When</th><th>Operation</th><th>RG</th><th>Caller</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
+function renderCompliance(el,data){
+  const gaps=data.governance_gaps||[];
+  const badge=document.getElementById('posture-badge');
+  const gapCard=document.getElementById('c-gap');
+  gapCard.textContent=String(data.governance_gap_count ?? gaps.length); gapCard.className='v';
+  if(gaps.length){ badge.textContent=gaps.length+' gap'+(gaps.length>1?'s':''); badge.className='pill fail'; }
+  else { badge.textContent='clean'; badge.className='pill ok'; }
+  // access table
+  const roles=data.role_assignments||[];
+  let html='';
+  if(roles.length){
+    const rr=roles.map((r,i)=>'<tr style="animation-delay:'+(i*30)+'ms"><td><b>'+esc(r.role)+'</b></td>'+
+      '<td class="loc">'+esc(r.principal_id)+'</td><td class="loc">'+esc(r.scope)+'</td></tr>').join('');
+    html+='<h3 style="font-size:.8rem;color:var(--muted);margin:.2rem 0 .6rem">Access (RBAC)</h3>'+
+      '<table><thead><tr><th>Role</th><th>Principal</th><th>Scope</th></tr></thead><tbody>'+rr+'</tbody></table>';
+  }
+  if(gaps.length){
+    const gg=gaps.map((g,i)=>'<tr style="animation-delay:'+(i*30)+'ms"><td><b>'+esc(g.resource)+'</b></td>'+
+      '<td class="loc">'+esc(g.resource_type)+'</td><td><span class="pill fail">'+esc(g.issue)+'</span></td></tr>').join('');
+    html+='<h3 style="font-size:.8rem;color:var(--muted);margin:1rem 0 .6rem">Governance gaps</h3>'+
+      '<table><thead><tr><th>Resource</th><th>Type</th><th>Issue</th></tr></thead><tbody>'+gg+'</tbody></table>';
+  }
+  if(!html) html=emptyState('No posture data','No role assignments or governance gaps returned.');
+  el.innerHTML=html;
+}
 async function loadAll(){
   const btn=document.getElementById('refresh'); btn.disabled=true; btn.textContent='↻ Refreshing…';
   try {
@@ -249,11 +279,14 @@ async function loadAll(){
       set('c-rg', s.resource_group_count ?? '–');
       set('c-cost', s.total_cost!=null ? s.total_cost.toFixed(2)+' '+(s.currency||'') : '–');
       set('c-act', s.activity_count ?? '–');
+      // governance gap count comes from the compliance endpoint; set a placeholder
+      document.getElementById('c-gap').textContent='…'; document.getElementById('c-gap').className='v dash';
     }
     const days=document.getElementById('days').value;
     fill('rg','/api/resources',renderRg,'rg-search');
     fill('cost','/api/costs?days='+days,renderCost);
     fill('logs','/api/logs',renderLogs);
+    fill('compliance','/api/compliance',renderCompliance);
   } finally { btn.disabled=false; btn.textContent='↻ Refresh'; }
 }
 let timer=null;
@@ -563,6 +596,14 @@ def create_app(
                 }
                 for e in get_activity_log(cfg)
             ]
+        return _safe(_compute, config_provider)
+
+    @app.route("/api/compliance")
+    def api_compliance():
+        from ..compliance import posture_summary
+
+        def _compute(cfg):
+            return posture_summary(cfg)
         return _safe(_compute, config_provider)
 
     return app

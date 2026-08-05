@@ -35,6 +35,25 @@ class CostSummary:
 
 
 @dataclass
+class RoleAssignment:
+    """A single RBAC role assignment (who has what access, at what scope)."""
+
+    role: str
+    principal_id: str
+    scope: str = "subscription"
+
+
+@dataclass
+class ComplianceState:
+    """A governance gap or posture finding for a resource."""
+
+    resource: str
+    resource_type: str
+    issue: str
+    compliant: bool = False
+
+
+@dataclass
 class ActivityEvent:
     """A single entry from the Azure activity log."""
 
