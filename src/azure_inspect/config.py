@@ -14,8 +14,10 @@ from dotenv import load_dotenv
 # Azure Resource Manager REST API version used across calls.
 ARM_API_VERSION = "2024-03-01"
 
-# Activity Log (Microsoft.Insights/eventLogs) uses a different, stable API
-# version — the ARM one above returns InvalidResourceType for this resource type.
+# Activity Log lives at tenant scope (providers/Microsoft.Insights/eventLogs)
+# with the subscription pinned via an OData resourceId filter. Subscription-
+# scoped eventLogs returns InvalidResourceType. 2017-03-01-preview is the
+# version that reaches the API (a 403 then means the SPN lacks tenant Reader).
 ACTIVITY_LOG_API_VERSION = "2017-03-01-preview"
 
 # Where load_config looks for the .env file when not already in the environment.
