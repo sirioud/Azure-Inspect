@@ -23,6 +23,7 @@ from ..config import AzureConfig, load_config
 from ..costs import cost_by_resource_group
 from ..logs import get_activity_log
 from ..resources import list_resource_groups
+from ..cache import DataCache
 
 _INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -375,6 +376,29 @@ def _classify_error(exc: Exception) -> tuple[dict, int]:
     """
     msg = str(exc)
     lowered = msg.lower()
+
+    # Activity-log failures take priority over the generic auth branch: a 403
+    # here is specifically "SPN lacks tenant/directory Reader", not a generic
+    # auth problem, and deserves its own actionable banner.
+    if "insights" in lowered and ("eventlogs" in lowered or "activitylog" in lowered
+                                   or "invalidresourcetype" in lowered):
+        if "403" in msg or "authorizationfailed" in lowered or "forbidden" in lowered:
+            return {
+                "error": "Azure rejected the activity-log request — the service "
+                         "principal most likely lacks Reader (or Monitoring "
+                         "Reader) at the tenant/directory scope. Grant that role "
+                         "in Entra ID, then refresh. "
+                         f"({msg[:140]})",
+                "code": "log_query_error",
+            }, 503
+        return {
+            "error": "The activity-log endpoint returned an error. If this "
+                     "persists it is a configuration issue with the api-version "
+                     "or resource type. "
+                     f"({msg[:140]})",
+            "code": "log_query_error",
+        }, 503
+
     auth_signals = (
         "401" in msg,
         "403" in msg,
@@ -402,13 +426,25 @@ def _classify_error(exc: Exception) -> tuple[dict, int]:
                      f"({msg[:160]})",
             "code": "cost_data_unavailable",
         }, 503
-    if "invalidresourcetype" in lowered and "insights" in lowered:
+    if "insights" in lowered and ("eventlogs" in lowered or "activitylog" in lowered
+                                   or "invalidresourcetype" in lowered):
+        # Activity-log endpoint failure. A 403 means the SPN lacks read at
+        # tenant/directory scope (grant Reader at tenant scope in Entra ID);
+        # a 404 means the api-version/resource-type is wrong (code defect).
+        if "403" in msg or "authorizationfailed" in lowered or "forbidden" in lowered:
+            return {
+                "error": "Azure rejected the activity-log request — the service "
+                         "principal most likely lacks Reader (or Monitoring "
+                         "Reader) at the tenant/directory scope. Grant that role "
+                         "in Entra ID, then refresh. "
+                         f"({msg[:140]})",
+                "code": "log_query_error",
+            }, 503
         return {
-            "error": "The activity-log API returned an unsupported resource type. "
-                     "This usually means the service principal lacks read "
-                     "permission at the tenant (directory) scope — grant it the "
-                     "Reader role at tenant scope in Entra ID, then refresh. "
-                     f"({msg[:120]})",
+            "error": "The activity-log endpoint returned an error. If this "
+                     "persists it is a configuration issue with the api-version "
+                     "or resource type. "
+                     f"({msg[:140]})",
             "code": "log_query_error",
         }, 503
     return {"error": msg}, 500
@@ -464,6 +500,7 @@ def create_app(
             (used by tests); pass ``True`` to force it on.
     """
     app = Flask(__name__)
+    cache = DataCache()
 
     # --- password gate (optional) ---
     # Load .env so DASHBOARD_PASSWORD / DASHBOARD_SECRET are available in the
@@ -533,10 +570,6 @@ def create_app(
     def index():
         return render_template_string(_INDEX_HTML)
 
-    @app.route("/health")
-    def health():
-        return jsonify({"status": "ok"})
-
     @app.route("/api/summary")
     def api_summary():
         def _compute(cfg):
@@ -545,7 +578,12 @@ def create_app(
             costs = cost_by_resource_group(cfg, from_date=date.today() - timedelta(days=30))
             total = sum(c.cost for c in costs)
             currency = costs[0].currency if costs else ""
-            logs = get_activity_log(cfg, hours=24)
+            # Activity log is optional for the summary: if it's unavailable
+            # (e.g. SPN lacks tenant Reader), don't fail the whole card row.
+            try:
+                logs = get_activity_log(cfg, hours=24)
+            except Exception:
+                logs = []
             return {
                 "subscription_id": cfg.subscription_id,
                 "resource_group_count": len(rgs),
@@ -553,7 +591,7 @@ def create_app(
                 "currency": currency,
                 "activity_count": len(logs),
             }
-        return _safe(_compute, config_provider)
+        return _safe(lambda cfg: cache.cached("summary", lambda: _compute(cfg)), config_provider)
 
     @app.route("/api/resources")
     def api_resources():
@@ -566,7 +604,7 @@ def create_app(
                 }
                 for rg in list_resource_groups(cfg)
             ]
-        return _safe(_compute, config_provider)
+        return _safe(lambda cfg: cache.cached("resources", lambda: _compute(cfg)), config_provider)
 
     @app.route("/api/costs")
     def api_costs():
@@ -581,7 +619,7 @@ def create_app(
                 }
                 for c in cost_by_resource_group(cfg, from_date=_date_window(days))
             ]
-        return _safe(_compute, config_provider)
+        return _safe(lambda cfg: cache.cached(f"costs_{days}", lambda: _compute(cfg)), config_provider)
 
     @app.route("/api/logs")
     def api_logs():
@@ -596,7 +634,7 @@ def create_app(
                 }
                 for e in get_activity_log(cfg)
             ]
-        return _safe(_compute, config_provider)
+        return _safe(lambda cfg: cache.cached("logs", lambda: _compute(cfg)), config_provider)
 
     @app.route("/api/compliance")
     def api_compliance():
@@ -604,7 +642,19 @@ def create_app(
 
         def _compute(cfg):
             return posture_summary(cfg)
-        return _safe(_compute, config_provider)
+        return _safe(lambda cfg: cache.cached("compliance", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/health")
+    def health():
+        # Report data freshness, not just process liveness: a 200 here means
+        # the process is up AND we know when each dataset was last written.
+        freshness = {k: cache.written_at(k) for k in
+                     ("summary", "resources", "costs_30", "logs", "compliance")}
+        configured = _load_cfg(config_provider) is not None
+        return jsonify({
+            "status": "ok" if configured else "not_configured",
+            "data_freshness": freshness,
+        })
 
     return app
 
