@@ -114,14 +114,20 @@ def evaluate_alerts(cache: DataCache, cfg) -> None:
     # 1) Spend spike: latest daily cost vs median of prior 7 days.
     #    Read the per-day series from the cache (refresher populates costs_daily),
     #    so we don't issue an extra Cost Management call here.
+    #    Two guards prevent noise on a near-zero testlab: the spike must be both
+    #    > SPIKE_MULTIPLE x the 7-day median AND above an absolute floor
+    #    (SPIKE_FLOOR, default 10 currency units) — a CHF 0.01 testlab never pages.
     try:
+        spike_multiple = float(os.getenv("ALERT_SPIKE_MULTIPLE", "2"))
+        spike_floor = float(os.getenv("ALERT_SPIKE_FLOOR", "10"))
         daily = cache.value("costs_daily") or []
         series = [(row["day"], float(row["cost"]), row["currency"]) for row in daily]
         if len(series) >= 8:
             latest_day, latest_cost, cur = series[-1]
             baseline = [c for _, c, _ in series[-8:-1]]
             median = sorted(baseline)[len(baseline) // 2]
-            if median > 0 and latest_cost > max(2 * median, median + 5):
+            threshold = max(spike_multiple * median, spike_floor)
+            if median > 0 and latest_cost > threshold:
                 alerts.alert(
                     "spend_spike",
                     f"\u26a0\ufe0f Azure spend spike on {latest_day} ({sub}): "
