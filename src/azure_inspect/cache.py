@@ -70,6 +70,11 @@ class DataCache:
             ).fetchone()
         return row[0] if row else None
 
+    def value(self, key: str) -> Any:
+        """Return just the cached value (or None), without the timestamp."""
+        hit = self.get(key)
+        return hit[0] if hit is not None else None
+
     def cached(self, key: str, producer: Callable[[], Any], *,
                force: bool = False) -> Any:
         """Return cached value, refreshing via ``producer`` when missing/forced.
