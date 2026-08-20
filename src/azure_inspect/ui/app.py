@@ -149,11 +149,12 @@ _INDEX_HTML = """<!doctype html>
     <h1>Azure-Inspect</h1>
   </div>
   <div id="controls">
-    <span id="meta"><span class="live"></span> <b id="sub">…</b> · <span id="updated">–</span></span>
+    <span id="meta"><span class="live"></span> <b id="sub">…</b> · <span id="updated">–</span> · <span id="synced" class="muted">sync: –</span></span>
     <label>Cost
       <select id="days"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select>
     </label>
-    <label title="Auto-refresh every 60s"><input type="checkbox" id="auto" checked> auto</label>
+    <label title="Auto-refresh dashboard every 60s (reads local cache)"><input type="checkbox" id="auto" checked> auto</label>
+    <button id="sync">⇅ Sync now</button>
     <button id="refresh">↻ Refresh</button>
     <a class="logout" href="/logout">Logout</a>
   </div>
@@ -264,6 +265,21 @@ function renderCompliance(el,data){
   if(!html) html=emptyState('No posture data','No role assignments or governance gaps returned.');
   el.innerHTML=html;
 }
+function relTime(iso){ if(!iso) return 'never'; try{ const s=(Date.now()-new Date(iso).getTime())/1000;
+  if(s<60)return Math.round(s)+'s ago'; if(s<3600)return Math.round(s/60)+'m ago';
+  if(s<86400)return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }catch{return '?'; } }
+async function updateSynced(){
+  try{ const r=await fetch('/api/freshness'); const j=await r.json();
+    const newest=Object.values(j).filter(Boolean).sort().pop();
+    document.getElementById('synced').textContent='sync: '+relTime(newest); }
+  catch{ document.getElementById('synced').textContent='sync: ?'; }
+}
+async function doSync(){
+  const b=document.getElementById('sync'); b.disabled=true; b.textContent='⇅ Syncing…';
+  try{ await fetch('/api/refresh',{method:'POST'}); await loadAll(); }
+  catch(e){ toast('Sync failed: '+e); }
+  finally{ b.disabled=false; b.textContent='⇅ Sync now'; updateSynced(); }
+}
 async function loadAll(){
   const btn=document.getElementById('refresh'); btn.disabled=true; btn.textContent='↻ Refreshing…';
   try {
@@ -294,9 +310,10 @@ let timer=null;
 function setupAuto(){ if(timer)clearInterval(timer); if(document.getElementById('auto').checked) timer=setInterval(loadAll,60000); }
 document.getElementById('auto').addEventListener('change',setupAuto);
 document.getElementById('refresh').addEventListener('click',loadAll);
+document.getElementById('sync').addEventListener('click',doSync);
 document.getElementById('days').addEventListener('change',loadAll);
 document.getElementById('rg-search').addEventListener('input',()=>fill('rg','/api/resources',renderRg,'rg-search'));
-loadAll(); setupAuto();
+loadAll(); setupAuto(); updateSynced();
 </script>
 </body>
 </html>
@@ -655,6 +672,28 @@ def create_app(
             "status": "ok" if configured else "not_configured",
             "data_freshness": freshness,
         })
+
+    @app.route("/api/freshness")
+    def api_freshness():
+        """Per-dataset last-successful-write timestamps (ISO or null)."""
+        keys = ("summary", "resources", "costs_7", "costs_30", "costs_90",
+                "logs", "compliance")
+        return jsonify({k: cache.written_at(k) for k in keys})
+
+    @app.route("/api/refresh", methods=["POST"])
+    def api_refresh():
+        """Force an immediate background refresh of every cached dataset.
+
+        Returns the per-key result. Failures keep the previous good value.
+        """
+        from ..refresher import _refresh_once
+        from ..config import load_config as _lc
+        try:
+            cfg = _lc()
+        except Exception as exc:
+            return jsonify({"error": f"config unavailable: {exc}", "code": "not_configured"}), 503
+        results = _refresh_once(cache, cfg)
+        return jsonify({"refreshed": results, "ok": all(v == "ok" for v in results.values())})
 
     return app
 
