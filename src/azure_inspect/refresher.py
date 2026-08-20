@@ -24,9 +24,10 @@ from typing import Callable
 
 from .cache import DataCache
 from .config import load_config
-from .costs import cost_by_resource_group
+from .costs import cost_by_day, cost_by_resource_group
 from .logs import get_activity_log
 from .resources import list_resource_groups
+from . import alerts
 
 log = logging.getLogger("azure_inspect.refresher")
 
@@ -69,6 +70,10 @@ def _build_jobs(cfg):
             {"resource_group": c.resource_group, "cost": c.cost, "currency": c.currency}
             for c in cost_by_resource_group(cfg, from_date=date.today() - timedelta(days=90))
         ],
+        "costs_daily": lambda: [
+            {"day": d.isoformat(), "cost": c, "currency": cur}
+            for d, c, cur in cost_by_day(cfg, days=14)
+        ],
         "logs": lambda: [
             {"event_timestamp": e.event_timestamp.isoformat(), "operation": e.operation,
              "resource_group": e.resource_group, "caller": e.caller, "status": e.status}
@@ -95,6 +100,68 @@ def _refresh_once(cache: DataCache, cfg) -> dict[str, str]:
         if i < len(names) - 1:
             time.sleep(1.5)
     return results
+
+
+def evaluate_alerts(cache: DataCache, cfg) -> None:
+    """Run the alert checks against current cache state and notify on findings.
+
+    Best-effort: every check is wrapped so a failure in one never blocks the
+    others, and alerts are cooldown-gated (see alerts.alert) so the channel
+    isn't spammed on a sustained condition.
+    """
+    sub = cfg.subscription_id[:8]
+
+    # 1) Spend spike: latest daily cost vs median of prior 7 days.
+    #    Read the per-day series from the cache (refresher populates costs_daily),
+    #    so we don't issue an extra Cost Management call here.
+    try:
+        daily = cache.value("costs_daily") or []
+        series = [(row["day"], float(row["cost"]), row["currency"]) for row in daily]
+        if len(series) >= 8:
+            latest_day, latest_cost, cur = series[-1]
+            baseline = [c for _, c, _ in series[-8:-1]]
+            median = sorted(baseline)[len(baseline) // 2]
+            if median > 0 and latest_cost > max(2 * median, median + 5):
+                alerts.alert(
+                    "spend_spike",
+                    f"\u26a0\ufe0f Azure spend spike on {latest_day} ({sub}): "
+                    f"{cur} {latest_cost:,.2f} vs 7d median {cur} {median:,.2f}.",
+                )
+    except Exception as exc:
+        log.warning("spend-spike check failed: %s", exc)
+
+    # 2) New resource group: compare current RGs against the stored baseline.
+    try:
+        current = {rg.name for rg in list_resource_groups(cfg)}
+        baseline_raw = cache.value("rg_baseline")
+        if baseline_raw is None:
+            cache.set("rg_baseline", sorted(current))
+        else:
+            baseline = set(baseline_raw)
+            new_rgs = current - baseline
+            for name in sorted(new_rgs):
+                alerts.alert(
+                    f"new_rg:{name}",
+                    f"\ud83d\udcda New Azure resource group: {name} (sub {sub}).",
+                )
+            if new_rgs:
+                cache.set("rg_baseline", sorted(current))
+    except Exception as exc:
+        log.warning("new-RG check failed: %s", exc)
+
+    # 3) Stale data: if cost failed to refresh twice in a row, warn once.
+    #    (Successes reset the streak via cache.written_at.)
+    try:
+        from .cache import DataCache as _DC
+        cost_ts = cache.written_at("costs_30")
+        if cost_ts is None:
+            alerts.alert(
+                "stale_cost",
+                f"\u231b Azure-Inspect: cost data for {sub} has not refreshed "
+                f"successfully (cache empty). Dashboard may be stale.",
+            )
+    except Exception as exc:
+        log.warning("stale-data check failed: %s", exc)
 
 
 def start_refresher(
@@ -124,11 +191,13 @@ def start_refresher(
         log.info("refresher started (interval=%dm)", interval)
         # Initial fill so the cache is warm before the first user request.
         _refresh_once(cache, cfg)
+        evaluate_alerts(cache, cfg)
         while not stop_event.is_set():
             if stop_event.wait(interval * 60):
                 break
             try:
                 _refresh_once(cache, cfg)
+                evaluate_alerts(cache, cfg)
             except Exception as exc:  # never let the loop die
                 log.error("refresher loop error: %s", exc)
 
