@@ -131,6 +131,8 @@ _INDEX_HTML = """<!doctype html>
 
   .bar-wrap { width:150px; }
   .bar { height:10px; border-radius:7px; background:linear-gradient(90deg,var(--accent),var(--cyan)); box-shadow:0 0 12px rgba(57,211,255,.45); transition:width .6s cubic-bezier(.2,.8,.2,1); }
+  .spark-cell { width:104px; }
+  .minispark { display:block; }
   .pill { padding:2px 10px; border-radius:999px; font-size:.73rem; font-weight:600; }
   .ok { background:rgba(62,240,163,.15); color:var(--green); }
   .fail { background:rgba(255,107,129,.15); color:var(--red); }
@@ -265,15 +267,27 @@ function renderRg(el,data){
     '</span></td><td><span class="pill state">'+esc(d.provisioning_state)+'</span></td></tr>').join('');
   el.innerHTML='<table><thead><tr><th>Name</th><th>Location</th><th>State</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
-function renderCost(el,data){
+function renderCost(el,data,trendMap){
   if(!data.length){ el.innerHTML=emptyState('No cost data','Cost Management hasn\\'t indexed this subscription yet — this can take a few hours after a tenant move.'); return; }
   const max=Math.max(...data.map(d=>d.cost),0.0001);
   let rows=data.sort((a,b)=>b.cost-a.cost).map((d,i)=>{ const pct=Math.max(2,(d.cost/max*100)).toFixed(0);
-    return '<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(d.resource_group||'(none)')+'</b></td>'+
+    const rg=d.resource_group||'(none)';
+    const series=(trendMap&&trendMap[rg]||[]).map(x=>x.cost);
+    const spark=series.length>=2?miniSpark(series):'';
+    return '<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(rg)+'</b></td>'+
       '<td class="bar-wrap"><div class="bar" style="width:'+pct+'%"></div></td>'+
+      '<td class="spark-cell">'+(spark||'<span class="muted">–</span>')+'</td>'+
       '<td>'+Number(d.cost).toFixed(2)+' '+esc(d.currency)+'</td></tr>'; }).join('');
-  el.innerHTML='<table><thead><tr><th>Resource group</th><th></th><th>Cost</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  el.innerHTML='<table><thead><tr><th>Resource group</th><th></th><th>Trend (14d)</th><th>Cost</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
+function miniSpark(values){ // returns a tiny inline SVG string
+  const W=90,H=22,min=Math.min(...values),max=Math.max(...values),rng=(max-min)||1;
+  const pts=values.map((v,i)=>{ const x=(i/(values.length-1))*W; const y=H-2-((v-min)/rng)*(H-4); return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
+  return '<svg class="minispark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="'+W+'" height="'+H+'">'+
+    '<polyline points="'+pts+'" fill="none" stroke="url(#miniG)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<defs><linearGradient id="miniG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient></defs></svg>';
+}
+
 function renderLogs(el,data){
   if(!data.length){ el.innerHTML=emptyState('No recent activity','No activity-log events in the last 24 hours.'); return; }
   let rows=data.slice(0,60).map((d,i)=>{ const st=(d.status||'').toLowerCase().includes('fail')?'fail':'ok';
@@ -404,7 +418,10 @@ async function loadAll(){
     }
     const days=document.getElementById('days').value;
     fill('rg','/api/resources',renderRg,'rg-search');
-    fill('cost','/api/costs?days='+days,renderCost);
+    // fetch RG-trend map once, pass into renderCost for per-RG sparklines
+    let trendMap=null;
+    try { const tr=await fetch('/api/costs_rg_daily'); trendMap=await tr.json(); } catch(e){}
+    fill('cost','/api/costs?days='+days,(el,data)=>renderCost(el,data,trendMap));
     fill('logs','/api/logs',renderLogs);
     fill('compliance','/api/compliance',renderCompliance);
     fillTrend();
@@ -750,6 +767,16 @@ def create_app(
         (``[{"day", "cost", "currency"}]``) or an empty list when unavailable.
         """
         data = cache.value("costs_daily") or []
+        return jsonify(data)
+
+    @app.route("/api/costs_rg_daily")
+    def api_costs_rg_daily():
+        """Per-day cost for each resource group (cached from the refresher).
+
+        Returns ``{resource_group: [{"day", "cost"}]}`` for drawing mini
+        sparklines in the cost table. Empty dict when unavailable.
+        """
+        data = cache.value("costs_rg_daily") or {}
         return jsonify(data)
 
     @app.route("/api/logs")
