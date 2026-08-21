@@ -111,7 +111,64 @@ def cost_by_day(
     return out
 
 
-def _parse_cost_response(payload: dict[str, Any]) -> list[CostSummary]:
+def cost_by_resource_group_daily(
+    cfg: AzureConfig,
+    days: int = 14,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> dict[str, list[tuple[date, float]]]:
+    """Return per-day cost for each resource group over the trailing window.
+
+    One Cost Management call (grouped by both ResourceGroup and Date with Daily
+    granularity) yields the trend shape per RG, used to draw mini sparklines in
+    the cost table. Returns ``{resource_group: [(day, cost), ...]}`` sorted by day.
+
+    Raises:
+        RuntimeError: on persistent non-2xx responses from the Cost Management API.
+    """
+    if to_date is None:
+        to_date = date.today()
+    if from_date is None:
+        from_date = to_date - timedelta(days=days)
+
+    scope = f"/subscriptions/{cfg.subscription_id}"
+    url = (
+        f"{_COST_URL}{scope}/providers/Microsoft.CostManagement"
+        f"/query?api-version={_COST_API_VERSION}"
+    )
+    body = {
+        "type": "ActualCost",
+        "timeframe": "Custom",
+        "timePeriod": {"from": from_date.isoformat(), "to": to_date.isoformat()},
+        "dataset": {
+            "granularity": "Daily",
+            "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
+            "grouping": [
+                {"type": "Dimension", "name": "ResourceGroup"},
+                {"type": "Dimension", "name": "Date"},
+            ],
+        },
+    }
+    payload = azure_post_json(cfg, url, body)
+    props = payload.get("properties", {})
+    rows = props.get("rows", [])
+    columns = [c.get("name") for c in props.get("columns", [])]
+    cost_idx = columns.index("Cost") if "Cost" in columns else None
+    rg_idx = columns.index("ResourceGroup") if "ResourceGroup" in columns else None
+    date_idx = columns.index("Date") if "Date" in columns else None
+    if cost_idx is None or date_idx is None or rg_idx is None:
+        return {}
+    out: dict[str, list[tuple[date, float]]] = {}
+    for row in rows:
+        rg = row[rg_idx] or "(none)"
+        try:
+            d = datetime.strptime(row[date_idx], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        out.setdefault(rg, []).append((d, float(row[cost_idx])))
+    for rg in out:
+        out[rg].sort(key=lambda x: x[0])
+    return out
     props = payload.get("properties", {})
     rows = props.get("rows", [])
     columns = [c.get("name") for c in props.get("columns", [])]

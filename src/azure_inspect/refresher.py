@@ -24,7 +24,7 @@ from typing import Callable
 
 from .cache import DataCache
 from .config import load_config
-from .costs import cost_by_day, cost_by_resource_group
+from .costs import cost_by_day, cost_by_resource_group, cost_by_resource_group_daily
 from .logs import get_activity_log
 from .resources import list_resource_groups
 from . import alerts
@@ -74,6 +74,10 @@ def _build_jobs(cfg):
             {"day": d.isoformat(), "cost": c, "currency": cur}
             for d, c, cur in cost_by_day(cfg, days=14)
         ],
+        "costs_rg_daily": lambda: {
+            rg: [{"day": d.isoformat(), "cost": c} for d, c in series]
+            for rg, series in cost_by_resource_group_daily(cfg, days=14).items()
+        },
         "logs": lambda: [
             {"event_timestamp": e.event_timestamp.isoformat(), "operation": e.operation,
              "resource_group": e.resource_group, "caller": e.caller, "status": e.status}
