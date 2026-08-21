@@ -169,6 +169,9 @@ def cost_by_resource_group_daily(
     for rg in out:
         out[rg].sort(key=lambda x: x[0])
     return out
+
+
+def _parse_cost_response(payload: dict[str, Any]) -> list[CostSummary]:
     props = payload.get("properties", {})
     rows = props.get("rows", [])
     columns = [c.get("name") for c in props.get("columns", [])]
