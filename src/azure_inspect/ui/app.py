@@ -289,7 +289,7 @@ function miniSpark(values){ // returns a tiny inline SVG string
 }
 
 function renderLogs(el,data){
-  if(!data.length){ el.innerHTML=emptyState('No recent activity','No activity-log events in the last 24 hours.'); return; }
+  if(!data.length){ el.innerHTML=emptyState('Activity log unavailable','The legacy Azure activity-log API (Microsoft.Insights/eventLogs) is retired in this tenant\\'s API surface. To enable it, configure diagnostic settings → Log Analytics and query via Azure Resource Graph. Other tabs (cost, resources, compliance) are live.'); return; }
   let rows=data.slice(0,60).map((d,i)=>{ const st=(d.status||'').toLowerCase().includes('fail')?'fail':'ok';
     return '<tr style="animation-delay:'+(i*30)+'ms"><td title="'+esc(fmtTs(d.event_timestamp))+'">'+esc(rel(d.event_timestamp))+'</td>'+
       '<td>'+esc(d.operation)+'</td><td class="loc">'+esc(d.resource_group||'–')+'</td><td class="loc">'+esc(d.caller||'–')+'</td>'+
