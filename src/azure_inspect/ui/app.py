@@ -97,6 +97,23 @@ _INDEX_HTML = """<!doctype html>
     background:linear-gradient(100deg,var(--accent),var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
   .card .v.dash { background:none; -webkit-text-fill-color:var(--muted); color:var(--muted); }
 
+  .card .ico { position:absolute; top:1.15rem; right:1.2rem; width:22px; height:22px; opacity:.5; color:var(--accent); }
+  .card .spark { margin-top:.7rem; width:100%; height:34px; display:block; }
+  .card .delta { font-size:.72rem; margin-top:.35rem; font-weight:600; }
+  .card .delta.up { color:var(--red); } .card .delta.down { color:var(--green); }
+  .card .delta.flat { color:var(--muted); }
+
+  /* cost trend chart */
+  .chart-wrap { position:relative; margin-top:.4rem; }
+  #costchart { width:100%; height:240px; display:block; }
+  .chart-meta { display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; margin-bottom:.4rem; flex-wrap:wrap; }
+  .chart-total { font-size:1.5rem; font-weight:800; letter-spacing:-.03em; background:linear-gradient(100deg,var(--accent),var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .chart-sub { font-size:.74rem; color:var(--muted); }
+  .legend { display:flex; gap:1rem; font-size:.72rem; color:var(--muted); align-items:center; }
+  .legend .sw { width:12px; height:12px; border-radius:3px; background:linear-gradient(90deg,var(--accent),var(--cyan)); display:inline-block; margin-right:.35rem; vertical-align:middle; }
+  .chart-tip { position:absolute; pointer-events:none; background:rgba(14,19,29,.95); border:1px solid var(--border); border-radius:9px; padding:.4rem .6rem; font-size:.74rem; opacity:0; transform:translate(-50%,-115%); transition:opacity .12s; white-space:nowrap; box-shadow:var(--shadow); }
+  .chart-tip.show { opacity:1; }
+
   section { margin-bottom:1.9rem; border-radius:var(--radius); padding:1.2rem 1.35rem; box-shadow:var(--shadow);
     background:var(--panel); border:1px solid var(--border); backdrop-filter:blur(12px); border-top:1px solid rgba(88,166,255,.18); }
   .section-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem; }
@@ -162,10 +179,24 @@ _INDEX_HTML = """<!doctype html>
 <div id="toast"></div>
 <main>
   <div class="cards" id="cards">
-    <div class="card"><div class="k">Resource groups</div><div class="v dash" id="c-rg">–</div></div>
-    <div class="card"><div class="k">Total cost</div><div class="v dash" id="c-cost">–</div></div>
-    <div class="card"><div class="k">Activity (24h)</div><div class="v dash" id="c-act">–</div></div>
-    <div class="card"><div class="k">Governance gaps</div><div class="v dash" id="c-gap">–</div></div>
+    <div class="card">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M3 10h18M8 4v3M16 4v3"/></svg>
+      <div class="k">Resource groups</div><div class="v dash" id="c-rg">–</div>
+    </div>
+    <div class="card">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M7 7h7a3 3 0 0 1 0 6H7m0 0h8a3 3 0 0 1 0 6H7"/></svg>
+      <div class="k">Total cost (30d)</div><div class="v dash" id="c-cost">–</div>
+      <svg class="spark" id="c-cost-spark" viewBox="0 0 100 34" preserveAspectRatio="none"></svg>
+      <div class="delta flat" id="c-cost-delta"></div>
+    </div>
+    <div class="card">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"/></svg>
+      <div class="k">Activity (24h)</div><div class="v dash" id="c-act">–</div>
+    </div>
+    <div class="card">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+      <div class="k">Governance gaps</div><div class="v dash" id="c-gap">–</div>
+    </div>
   </div>
 
   <section>
@@ -176,6 +207,17 @@ _INDEX_HTML = """<!doctype html>
 
   <section><div class="section-head"><h2><span class="dot"></span> Cost by resource group</h2></div>
     <div id="cost"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></section>
+
+  <section><div class="section-head"><h2><span class="dot"></span> Cost trend (14d)</h2>
+      <div class="legend"><span><span class="sw"></span> daily spend</span></div></div>
+    <div class="chart-meta">
+      <div><span class="chart-total" id="trend-total">–</span> <span class="chart-sub" id="trend-sub"></span></div>
+    </div>
+    <div class="chart-wrap">
+      <svg id="costchart" viewBox="0 0 600 240" preserveAspectRatio="none"></svg>
+      <div class="chart-tip" id="chart-tip"></div>
+    </div>
+  </section>
 
   <section><div class="section-head"><h2><span class="dot"></span> Activity log</h2></div>
     <div id="logs"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></section>
@@ -265,7 +307,68 @@ function renderCompliance(el,data){
   if(!html) html=emptyState('No posture data','No role assignments or governance gaps returned.');
   el.innerHTML=html;
 }
-function relTime(iso){ if(!iso) return 'never'; try{ const s=(Date.now()-new Date(iso).getTime())/1000;
+function sparkline(svg, values){ // tiny inline sparkline into an <svg viewBox="0 0 100 34">
+  if(!svg) return;
+  if(!values || values.length<2){ svg.innerHTML=''; return; }
+  const W=100,H=34,min=Math.min(...values),max=Math.max(...values),rng=(max-min)||1;
+  const pts=values.map((v,i)=>{ const x=(i/(values.length-1))*W; const y=H-2-((v-min)/rng)*(H-4); return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
+  const area='M0,'+H+' L'+pts.replace(/ /g,' L')+' L'+W+','+H+' Z';
+  svg.innerHTML='<polygon points="'+pts+'" fill="none" stroke="url(#sparkG)" stroke-width="1.6" stroke-linejoin="round"/>'+
+    '<polygon points="'+area+'" fill="url(#sparkGA)"/>'+
+    '<defs><linearGradient id="sparkG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient>'+
+    '<linearGradient id="sparkGA" x1="0" y1="0" x2="0" y2="1"><stop stop-color="rgba(57,211,255,.28)"/><stop offset="1" stop-color="rgba(57,211,255,0)"/></linearGradient></defs>';
+}
+function drawCostChart(svg, tip, series){
+  if(!svg) return;
+  if(!series || series.length<2){ svg.innerHTML=''; if(tip)tip.classList.remove('show'); return; }
+  const W=600,H=240,pad=34,min=Math.min(...series.map(d=>d.cost)),max=Math.max(...series.map(d=>d.cost)),rng=(max-min)||1;
+  const X=i=>pad+(i/(series.length-1))*(W-pad*1.4);
+  const Y=v=>H-pad-((v-min)/rng)*(H-pad*2);
+  let path='', area='M'+pad+','+(H-pad);
+  series.forEach((d,i)=>{ const x=X(i).toFixed(1),y=Y(d.cost).toFixed(1); path+=(i?' L':'M')+x+','+y; area+=' L'+x+','+y; });
+  area+=' L'+X(series.length-1).toFixed(1)+','+(H-pad)+' Z';
+  // gridlines + y labels (min/mid/max)
+  const fmt=v=>Number(v).toFixed(2);
+  let grid='';
+  [min,(min+max)/2,max].forEach((g,i)=>{ const y=Y(g).toFixed(1);
+    grid+='<line x1="'+pad+'" y1="'+y+'" x2="'+(W-pad*0.4)+'" y2="'+y+'" stroke="rgba(255,255,255,.07)"/>'+
+      '<text x="4" y="'+(+y+3)+'" fill="#8593a6" font-size="10">'+fmt(g)+'</text>'; });
+  // x labels (first + last)
+  const xlabels='<text x="'+pad+'" y="'+(H-10)+'" fill="#8593a6" font-size="10">'+series[0].day.slice(5)+'</text>'+
+    '<text x="'+(W-pad*0.4-30)+'" y="'+(H-10)+'" fill="#8593a6" font-size="10" text-anchor="end">'+series[series.length-1].day.slice(5)+'</text>';
+  svg.innerHTML=grid+xlabels+
+    '<path d="'+area+'" fill="url(#areaG)"/>'+
+    '<path d="'+path+'" fill="none" stroke="url(#lineG)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>'+
+    series.map((d,i)=>'<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(d.cost).toFixed(1)+'" r="2.6" fill="#39d3ff"/>').join('')+
+    '<defs><linearGradient id="lineG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient>'+
+    '<linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="rgba(88,166,255,.35)"/><stop offset="1" stop-color="rgba(57,211,255,0)"/></linearGradient></defs>';
+  // hover
+  svg.onmousemove=function(e){ const r=svg.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*W;
+    let i=Math.round((px-pad)/((W-pad*1.4)/(series.length-1))); i=Math.max(0,Math.min(series.length-1,i));
+    const d=series[i]; tip.textContent=d.day+' · '+fmt(d.cost)+' '+d.currency; tip.style.left=(X(i)/W*r.width)+'px'; tip.style.top=(Y(d.cost)/H*r.height)+'px'; tip.classList.add('show'); };
+  svg.onmouseleave=function(){ tip.classList.remove('show'); };
+}
+async function fillTrend(){
+  const svg=document.getElementById('costchart'), tip=document.getElementById('chart-tip');
+  const totEl=document.getElementById('trend-total'), subEl=document.getElementById('trend-sub');
+  try{
+    const r=await fetch('/api/costs_daily'); const series=await r.json();
+    if(!Array.isArray(series)||!series.length){ svg.innerHTML=''; totEl.textContent='–'; subEl.textContent='no daily data yet'; return; }
+    drawCostChart(svg,tip,series);
+    // total of available days + delta vs first half vs second half
+    const vals=series.map(d=>d.cost), total=vals.reduce((a,b)=>a+b,0), cur=series[0].currency||'';
+    const half=Math.floor(vals.length/2), first=vals.slice(0,half).reduce((a,b)=>a+b,0), second=vals.slice(half).reduce((a,b)=>a+b,0);
+    totEl.textContent=total.toFixed(2)+' '+cur;
+    const pct=first? ((second-first)/first*100):0;
+    subEl.textContent=(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(0)+'% vs first half · '+series.length+'d';
+    subEl.style.color=pct>0?'var(--red)':'var(--green)';
+    // sparkline in the cost card
+    sparkline(document.getElementById('c-cost-spark'), vals);
+    const dEl=document.getElementById('c-cost-delta');
+    dEl.textContent=(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(0)+'% trend';
+    dEl.className='delta '+(pct>1?'up':pct<-1?'down':'flat');
+  }catch(e){ svg.innerHTML=''; totEl.textContent='–'; subEl.textContent='error'; }
+}
   if(s<60)return Math.round(s)+'s ago'; if(s<3600)return Math.round(s/60)+'m ago';
   if(s<86400)return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }catch{return '?'; } }
 async function updateSynced(){
@@ -304,6 +407,7 @@ async function loadAll(){
     fill('cost','/api/costs?days='+days,renderCost);
     fill('logs','/api/logs',renderLogs);
     fill('compliance','/api/compliance',renderCompliance);
+    fillTrend();
   } finally { btn.disabled=false; btn.textContent='↻ Refresh'; }
 }
 let timer=null;
@@ -637,6 +741,16 @@ def create_app(
                 for c in cost_by_resource_group(cfg, from_date=_date_window(days))
             ]
         return _safe(lambda cfg: cache.cached(f"costs_{days}", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/costs_daily")
+    def api_costs_daily():
+        """Per-day total cost series (cached from the refresher).
+
+        Used by the cost-trend chart. Returns the raw cached series
+        (``[{"day", "cost", "currency"}]``) or an empty list when unavailable.
+        """
+        data = cache.value("costs_daily") or []
+        return jsonify(data)
 
     @app.route("/api/logs")
     def api_logs():
