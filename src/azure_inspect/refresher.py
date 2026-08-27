@@ -99,10 +99,13 @@ def _refresh_once(cache: DataCache, cfg) -> dict[str, str]:
             log.warning("refresh failed for %s: %s", key, exc)
             results[key] = "error"
         # Stagger between jobs so we don't burst the Cost Management API
-        # (concurrent ActualCost queries can hit 429 throttling). Skip the
-        # pause after the last job.
+        # (back-to-back ActualCost queries hit 429 throttling). Azure Cost
+        # Management allows roughly one query every few seconds; 1.5s caused
+        # every cost key to 429 in a burst. 7s keeps us safely under the
+        # limit (7 jobs ~= 49s/cycle, far below the 15-min interval). Skip
+        # the pause after the last job.
         if i < len(names) - 1:
-            time.sleep(1.5)
+            time.sleep(7)
     return results
 
 
