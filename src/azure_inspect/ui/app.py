@@ -268,7 +268,7 @@ function renderRg(el,data){
   el.innerHTML='<table><thead><tr><th>Name</th><th>Location</th><th>State</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function renderCost(el,data,trendMap){
-  if(!data.length){ el.innerHTML=emptyState('No cost data','Cost Management hasn\\'t indexed this subscription yet — this can take a few hours after a tenant move.'); return; }
+  if(!data.length){ el.innerHTML=emptyState('No cost data','Cost Management has not indexed this subscription yet — this can take a few hours after a tenant move.'); return; }
   const max=Math.max(...data.map(d=>d.cost),0.0001);
   let rows=data.sort((a,b)=>b.cost-a.cost).map((d,i)=>{ const pct=Math.max(2,(d.cost/max*100)).toFixed(0);
     const rg=d.resource_group||'(none)';
@@ -289,7 +289,7 @@ function miniSpark(values){ // returns a tiny inline SVG string
 }
 
 function renderLogs(el,data){
-  if(!data.length){ el.innerHTML=emptyState('Activity log unavailable','The legacy Azure activity-log API (Microsoft.Insights/eventLogs) is retired in this tenant\\'s API surface. To enable it, configure diagnostic settings → Log Analytics and query via Azure Resource Graph. Other tabs (cost, resources, compliance) are live.'); return; }
+  if(!data.length){ el.innerHTML=emptyState('Activity log unavailable','The legacy Azure activity-log API (Microsoft.Insights/eventLogs) is retired in this tenant API surface. To enable it, configure diagnostic settings → Log Analytics and query via Azure Resource Graph. Other tabs (cost, resources, compliance) are live.'); return; }
   let rows=data.slice(0,60).map((d,i)=>{ const st=(d.status||'').toLowerCase().includes('fail')?'fail':'ok';
     return '<tr style="animation-delay:'+(i*30)+'ms"><td title="'+esc(fmtTs(d.event_timestamp))+'">'+esc(rel(d.event_timestamp))+'</td>'+
       '<td>'+esc(d.operation)+'</td><td class="loc">'+esc(d.resource_group||'–')+'</td><td class="loc">'+esc(d.caller||'–')+'</td>'+
@@ -383,8 +383,9 @@ async function fillTrend(){
     dEl.className='delta '+(pct>1?'up':pct<-1?'down':'flat');
   }catch(e){ svg.innerHTML=''; totEl.textContent='–'; subEl.textContent='error'; }
 }
-  if(s<60)return Math.round(s)+'s ago'; if(s<3600)return Math.round(s/60)+'m ago';
-  if(s<86400)return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }catch{return '?'; } }
+function relTime(s){ try{ const secs=(Date.now()-new Date(s).getTime())/1000;
+  if(secs<60)return Math.round(secs)+'s ago'; if(secs<3600)return Math.round(secs/60)+'m ago';
+  if(secs<86400)return Math.round(secs/3600)+'h ago'; return Math.round(secs/86400)+'d ago'; }catch{return '?'; } }
 async function updateSynced(){
   try{ const r=await fetch('/api/freshness'); const j=await r.json();
     const newest=Object.values(j).filter(Boolean).sort().pop();
