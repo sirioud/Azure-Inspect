@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -70,11 +70,20 @@ class ActivityEvent:
         try:
             ts = datetime.fromisoformat(payload["eventTimestamp"].replace("Z", "+00:00"))
         except (KeyError, ValueError):
-            ts = datetime.min
+            ts = datetime.min.replace(tzinfo=timezone.utc)
         return cls(
             event_timestamp=ts,
-            operation=props.get("operationName", "unknown"),
+            # Azure returns operationName/status as LocalizableString objects
+            # {"value": ..., "localizedValue": ...}; unwrap the machine value.
+            operation=_localize(props.get("operationName")),
             resource_group=props.get("resourceGroupName", ""),
             caller=caller,
-            status=props.get("status", "unknown"),
+            status=_localize(props.get("status")),
         )
+
+
+def _localize(value: object) -> str:
+    """Unwrap an Azure LocalizableString ({'value':..., 'localizedValue':...})."""
+    if isinstance(value, dict):
+        return str(value.get("value", value.get("localizedValue", "unknown")))
+    return str(value) if value is not None else "unknown"

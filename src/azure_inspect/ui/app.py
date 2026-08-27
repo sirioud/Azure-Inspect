@@ -249,7 +249,7 @@ function warnState(title, hint){ return '<div class="state-box warn"><div class=
 async function fill(id, url, render, searchId){
   const el=document.getElementById(id);
   try {
-    const r=await fetch(url); const data=await r.json();
+    const r=await fetch(url); let data=await r.json();
     if(data.error){
       if(data.code==='not_configured'){ toast(data.error); el.innerHTML=warnState('Not configured', data.error); return; }
       if(data.code==='auth_error'){ toast(data.error); el.innerHTML=warnState('Access denied', data.error); return; }
@@ -555,7 +555,14 @@ def _classify_error(exc: Exception) -> tuple[dict, int]:
                      f"({msg[:160]})",
             "code": "auth_error",
         }, 503
-    if "getazuresubscriptionbyid" in lowered or "costmanagement" in lowered:
+    if "getazuresubscriptionbyid" in lowered:
+        return {
+            "error": "Azure rejected a subscription lookup — the service "
+                     "principal likely lacks Reader at the subscription scope. "
+                     f"({msg[:160]})",
+            "code": "auth_error",
+        }, 503
+    if "costmanagement" in lowered and ("query" in lowered or "cost" in lowered):
         return {
             "error": "Azure Cost Management has no billing data for this "
                      "subscription yet. This commonly happens just after a "
@@ -847,4 +854,4 @@ def _date_window(days: int):
 
 
 if __name__ == "__main__":
-    create_app().run(debug=True, host="127.0.0.1", port=5000)
+    create_app().run(debug=False, host="127.0.0.1", port=5000)
