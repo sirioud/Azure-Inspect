@@ -43,9 +43,16 @@ def _build_jobs(cfg):
             logs = get_activity_log(cfg, hours=24)
         except Exception:
             logs = []
+        total_resources = 0
+        try:
+            from .graph import resource_inventory
+            total_resources = resource_inventory(cfg).get("total_resources") or 0
+        except Exception:
+            total_resources = 0
         return {
             "subscription_id": cfg.subscription_id,
             "resource_group_count": len(rgs),
+            "total_resources": total_resources,
             "total_cost": round(total, 2),
             "currency": currency,
             "activity_count": len(logs),

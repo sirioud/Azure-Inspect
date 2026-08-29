@@ -20,3 +20,4 @@ dist/
 .coverage
 htmlcov/
 uv.lock
+azure_inspect.db

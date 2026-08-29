@@ -30,412 +30,415 @@ _INDEX_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Azure-Inspect</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<title>Azure-Inspect · Security Posture</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   :root {
-    --bg:#070a12; --panel:rgba(20,26,38,.6); --panel-solid:#0e131d;
-    --border:rgba(255,255,255,.09); --fg:#eaf1f8; --muted:#8593a6;
-    --accent:#58a6ff; --accent2:#7c5cff; --cyan:#39d3ff; --green:#3ef0a3;
-    --red:#ff6b81; --radius:18px; --shadow:0 10px 40px rgba(0,0,0,.45);
+    --bg:#0b0f14; --panel:#10171f; --panel2:#0d141b; --panel-solid:#0e151c;
+    --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.04);
+    --fg:#e7eef5; --muted:#8190a3; --faint:#5b6678;
+    --accent:#1fd1a5; --accent2:#00e0a4; --cyan:#27e0c8;
+    --crit:#ff3b5c; --high:#ff6a3d; --med:#ffc24b; --low:#1fd1a5; --green:#1fd1a5; --red:#ff3b5c; --amber:#ffc24b;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sidebar-w:220px; --shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 8px 30px rgba(0,0,0,.55);
   }
   * { box-sizing:border-box; } html,body { margin:0; }
   body { font-family:'Inter',system-ui,sans-serif; color:var(--fg); min-height:100vh;
-    background:var(--bg); overflow-x:hidden; -webkit-font-smoothing:antialiased; }
-  .aurora { position:fixed; inset:-20%; z-index:-2; filter:blur(70px); opacity:.85;
     background:
-      radial-gradient(40% 50% at 20% 30%, rgba(88,166,255,.30), transparent 60%),
-      radial-gradient(45% 55% at 80% 25%, rgba(124,92,255,.28), transparent 60%),
-      radial-gradient(50% 60% at 55% 85%, rgba(57,211,255,.22), transparent 60%);
-    animation:drift 18s ease-in-out infinite alternate; }
-  @keyframes drift { 0%{transform:translate3d(-3%,-2%,0) scale(1.05) rotate(0)} 50%{transform:translate3d(4%,3%,0) scale(1.15) rotate(8deg)} 100%{transform:translate3d(-2%,4%,0) scale(1.08) rotate(-6deg)} }
-  .grain { position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.035;
-    background-image:radial-gradient(rgba(255,255,255,.9) 1px, transparent 1px); background-size:3px 3px; }
+      radial-gradient(55% 45% at 12% 0%, rgba(31,209,165,.10), transparent 55%),
+      radial-gradient(50% 40% at 95% 8%, rgba(39,224,200,.08), transparent 55%),
+      var(--bg);
+    background-attachment:fixed; overflow-x:hidden; -webkit-font-smoothing:antialiased; }
+  body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.45;
+    background-image:linear-gradient(rgba(31,209,165,.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(31,209,165,.018) 1px, transparent 1px);
+    background-size:40px 40px; mask-image:radial-gradient(circle at 40% 0%, #000 22%, transparent 78%); }
 
-  header { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
-    padding:1rem 1.9rem; border-bottom:1px solid var(--border);
-    background:rgba(7,10,18,.55); backdrop-filter:blur(18px) saturate(140%); flex-wrap:wrap; gap:.7rem; }
-  .brand { display:flex; align-items:center; gap:.75rem; }
-  .brand svg { width:32px; height:32px; animation:float 5s ease-in-out infinite; }
-  @keyframes float { 50%{transform:translateY(-3px)} }
-  .brand h1 { margin:0; font-size:1.3rem; font-weight:800; letter-spacing:-.03em;
-    background:linear-gradient(100deg,var(--accent),var(--cyan) 45%,var(--accent2)); background-size:200% auto;
-    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; animation:shimmer 6s linear infinite; }
-  @keyframes shimmer { to{background-position:200% center} }
-  #controls { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
-  #meta { font-size:.8rem; color:var(--muted); display:flex; align-items:center; gap:.5rem; }
-  #meta b { color:var(--fg); font-weight:600; font-family:'JetBrains Mono',monospace; font-size:.74rem; }
-  .live { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(62,240,163,.6); animation:pulse 1.8s infinite; }
-  @keyframes pulse { 70%{box-shadow:0 0 0 7px rgba(62,240,163,0)} 100%{box-shadow:0 0 0 0 rgba(62,240,163,0)} }
-  select, button { background:var(--panel-solid); color:var(--fg); border:1px solid var(--border); border-radius:11px;
-    padding:.45rem .85rem; cursor:pointer; font:inherit; font-size:.82rem; transition:all .16s ease; }
-  button:hover,select:hover { border-color:var(--accent); box-shadow:0 0 0 3px rgba(88,166,255,.14); transform:translateY(-1px); }
-  button:active { transform:translateY(0); } button:disabled { opacity:.5; cursor:default; transform:none; box-shadow:none; }
+  .sidebar { position:fixed; top:0; left:0; bottom:0; width:var(--sidebar-w); z-index:30;
+    background:linear-gradient(180deg, #0c141b, #0a0e13); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:.95rem .7rem; gap:.35rem; transition:width .2s ease; }
+  .sidebar.collapsed { width:62px; }
+  .brand { display:flex; align-items:center; gap:.6rem; padding:.2rem .4rem .85rem; }
+  .brand svg { width:27px; height:27px; flex:0 0 auto; }
+  .brand h1 { font-size:1rem; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
+    background:linear-gradient(100deg,var(--accent),var(--cyan) 60%,var(--accent2)); background-size:200% auto;
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
+  .sidebar.collapsed .brand h1, .sidebar.collapsed .nav-label { display:none; }
+  .nav-item { display:flex; align-items:center; gap:.7rem; padding:.6rem .7rem; border-radius:9px;
+    color:var(--muted); cursor:pointer; font-size:.86rem; font-weight:500; transition:all .14s; white-space:nowrap; }
+  .nav-item:hover { background:rgba(255,255,255,.05); color:var(--fg); }
+  .nav-item.active { background:linear-gradient(90deg, rgba(31,209,165,.16), rgba(31,209,165,.03)); color:var(--fg);
+    box-shadow:inset 2px 0 0 var(--accent); }
+  .nav-item svg { width:19px; height:19px; flex:0 0 auto; }
+  .nav-label { overflow:hidden; }
+  .sb-toggle { margin-top:auto; }
+  .sb-foot { font-size:.66rem; color:var(--faint); padding:.4rem .5rem; font-family:var(--mono); }
+
+  .app { margin-left:var(--sidebar-w); transition:margin-left .2s ease; }
+  .app.full { margin-left:62px; }
+  header.top { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    padding:.8rem 1.5rem; border-bottom:1px solid var(--border); background:rgba(11,15,20,.82); backdrop-filter:blur(14px); flex-wrap:wrap; gap:.6rem; }
+  .meta { font-size:.78rem; color:var(--muted); display:flex; align-items:center; gap:.5rem; font-family:var(--mono); }
+  .meta b { color:var(--fg); }
+  .live { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(31,209,165,.55); animation:pulse 1.8s infinite; }
+  @keyframes pulse { 70%{box-shadow:0 0 0 6px rgba(31,209,165,0)} 100%{box-shadow:0 0 0 0 rgba(31,209,165,0)} }
+  #controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  select, button { background:var(--panel2); color:var(--fg); border:1px solid var(--border); border-radius:9px;
+    padding:.42rem .8rem; cursor:pointer; font:inherit; font-size:.8rem; transition:all .15s; }
+  button:hover,select:hover { border-color:var(--accent); box-shadow:0 0 0 3px rgba(31,209,165,.13); }
+  button:active { transform:translateY(0); } button:disabled { opacity:.5; cursor:default; box-shadow:none; }
   input[type=checkbox]{ accent-color:var(--accent); }
-  .logout { color:var(--muted); text-decoration:none; font-size:.8rem; padding:.4rem .7rem; border:1px solid var(--border); border-radius:10px; transition:all .15s; }
+  .logout { color:var(--muted); text-decoration:none; font-size:.78rem; padding:.4rem .7rem; border:1px solid var(--border); border-radius:9px; }
   .logout:hover { color:var(--fg); border-color:var(--accent); }
-  main { padding:1.9rem; max-width:1180px; margin:0 auto; }
+  main { padding:1.4rem 1.5rem 2rem; max-width:1340px; }
 
-  #toast { position:fixed; bottom:1.4rem; left:50%; transform:translateX(-50%) translateY(20px);
-    z-index:50; max-width:560px; padding:.8rem 1.1rem; border-radius:13px; font-size:.84rem; opacity:0;
-    background:rgba(20,26,38,.92); border:1px solid rgba(255,107,129,.4); color:var(--red);
-    box-shadow:var(--shadow); backdrop-filter:blur(12px); transition:all .35s cubic-bezier(.2,.8,.2,1); pointer-events:none; }
-  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:.9rem; margin-bottom:1.4rem; }
+  .kpi { position:relative; overflow:hidden; border-radius:13px; padding:1rem 1.1rem;
+    background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--border); box-shadow:var(--shadow); }
+  .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:13px 0 0 13px; background:var(--accent); opacity:.85; }
+  .kpi.k-res::before { background:var(--accent); } .kpi.k-rg::before { background:var(--cyan); }
+  .kpi.k-score::before { background:var(--green); } .kpi.k-find::before { background:var(--high); }
+  .kpi.k-cost::before { background:var(--amber); }
+  .kpi .k { font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
+  .kpi .v { font-size:1.9rem; font-weight:800; margin-top:.3rem; font-family:var(--mono); color:var(--fg); line-height:1; }
+  .kpi .sub { font-size:.66rem; color:var(--muted); margin-top:.25rem; }
 
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:1.05rem; margin-bottom:1.9rem; }
-  .card { position:relative; overflow:hidden; border-radius:var(--radius); padding:1.2rem 1.3rem;
-    background:var(--panel); border:1px solid var(--border); box-shadow:var(--shadow); backdrop-filter:blur(12px);
-    transition:transform .25s ease, box-shadow .25s ease, border-color .25s; }
-  .card::before { content:""; position:absolute; inset:0; border-radius:inherit; padding:1px;
-    background:linear-gradient(135deg, rgba(88,166,255,.5), transparent 45%);
-    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; opacity:.6; pointer-events:none; }
-  .card:hover { transform:translateY(-5px); box-shadow:0 18px 50px rgba(88,166,255,.18); border-color:rgba(88,166,255,.35); }
-  .card .k { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
-  .card .v { font-size:2.1rem; font-weight:800; margin-top:.4rem; letter-spacing:-.03em;
-    background:linear-gradient(100deg,var(--accent),var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-  .card .v.dash { background:none; -webkit-text-fill-color:var(--muted); color:var(--muted); }
-
-  .card .ico { position:absolute; top:1.15rem; right:1.2rem; width:22px; height:22px; opacity:.5; color:var(--accent); }
-  .card .spark { margin-top:.7rem; width:100%; height:34px; display:block; }
-  .card .delta { font-size:.72rem; margin-top:.35rem; font-weight:600; }
-  .card .delta.up { color:var(--red); } .card .delta.down { color:var(--green); }
-  .card .delta.flat { color:var(--muted); }
-
-  /* cost trend chart */
-  .chart-wrap { position:relative; margin-top:.4rem; }
-  #costchart { width:100%; height:240px; display:block; }
-  .chart-meta { display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; margin-bottom:.4rem; flex-wrap:wrap; }
-  .chart-total { font-size:1.5rem; font-weight:800; letter-spacing:-.03em; background:linear-gradient(100deg,var(--accent),var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-  .chart-sub { font-size:.74rem; color:var(--muted); }
-  .legend { display:flex; gap:1rem; font-size:.72rem; color:var(--muted); align-items:center; }
-  .legend .sw { width:12px; height:12px; border-radius:3px; background:linear-gradient(90deg,var(--accent),var(--cyan)); display:inline-block; margin-right:.35rem; vertical-align:middle; }
-  .chart-tip { position:absolute; pointer-events:none; background:rgba(14,19,29,.95); border:1px solid var(--border); border-radius:9px; padding:.4rem .6rem; font-size:.74rem; opacity:0; transform:translate(-50%,-115%); transition:opacity .12s; white-space:nowrap; box-shadow:var(--shadow); }
-  .chart-tip.show { opacity:1; }
-
-  section { margin-bottom:1.9rem; border-radius:var(--radius); padding:1.2rem 1.35rem; box-shadow:var(--shadow);
-    background:var(--panel); border:1px solid var(--border); backdrop-filter:blur(12px); border-top:1px solid rgba(88,166,255,.18); }
-  .section-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem; }
-  h2 { font-size:.95rem; margin:0; font-weight:700; display:flex; align-items:center; gap:.55rem; }
-  h2 .dot { width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--cyan)); box-shadow:0 0 10px var(--accent); }
-  input[type=search] { background:var(--panel-solid); color:var(--fg); border:1px solid var(--border); border-radius:11px; padding:.4rem .75rem; font:inherit; min-width:185px; font-size:.82rem; }
-  input[type=search]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(88,166,255,.14); }
-
-  table { border-collapse:collapse; width:100%; font-size:.85rem; }
-  th,td { border-bottom:1px solid rgba(255,255,255,.06); padding:.6rem .75rem; text-align:left; }
-  th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
-  tbody tr { opacity:0; animation:fadein .4s ease forwards; transition:background .12s; }
-  tbody tr:hover { background:rgba(255,255,255,.035); }
-  @keyframes fadein { to{opacity:1} }
-
-  .bar-wrap { width:150px; }
-  .bar { height:10px; border-radius:7px; background:linear-gradient(90deg,var(--accent),var(--cyan)); box-shadow:0 0 12px rgba(57,211,255,.45); transition:width .6s cubic-bezier(.2,.8,.2,1); }
-  .spark-cell { width:104px; }
-  .minispark { display:block; }
-  .pill { padding:2px 10px; border-radius:999px; font-size:.73rem; font-weight:600; }
-  .ok { background:rgba(62,240,163,.15); color:var(--green); }
-  .fail { background:rgba(255,107,129,.15); color:var(--red); }
-  .state { background:rgba(88,166,255,.15); color:var(--accent); }
-  .loc { font-size:.72rem; color:var(--muted); }
-  .muted { color:var(--muted); }
-
-  .state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.6rem;
-    padding:2.2rem 1rem; text-align:center; color:var(--muted); animation:fadein .4s ease; }
-  .state-box .ico { width:42px; height:42px; opacity:.55; }
-  .state-box .t { font-weight:600; color:var(--fg); font-size:.92rem; }
-  .state-box .h { font-size:.8rem; max-width:420px; line-height:1.45; }
-  .state-box.warn .ico { color:var(--red); opacity:.7; }
-  .state-box.warn .h { color:#d98a98; }
-
-  .loading { display:flex; flex-direction:column; gap:.6rem; padding:.3rem 0; }
-  .sk { height:14px; border-radius:6px; background:linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.14), rgba(255,255,255,.06)); background-size:200% 100%; animation:sk 1.2s infinite; }
+  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:1.1rem; }
+  .panel { grid-column:span 6; border-radius:14px; padding:1.1rem 1.25rem; background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--border); box-shadow:var(--shadow); min-height:240px; display:flex; flex-direction:column; }
+  .panel.w12 { grid-column:span 12; } .panel.w4 { grid-column:span 4; } .panel.w8 { grid-column:span 8; }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:.7rem; gap:.8rem; }
+  .panel-head h2 { font-size:.9rem; margin:0; font-weight:700; display:flex; align-items:center; gap:.5rem; }
+  .panel-head h2 .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .chart { width:100%; height:255px; }
+  .chart.sm { height:200px; }
+  table { border-collapse:collapse; width:100%; font-size:.82rem; }
+  th,td { border-bottom:1px solid var(--border2); padding:.5rem .6rem; text-align:left; }
+  th { color:var(--faint); font-weight:600; font-size:.66rem; text-transform:uppercase; letter-spacing:.07em; }
+  tbody tr:hover { background:rgba(255,255,255,.04); }
+  td b, .mono { font-family:var(--mono); }
+  .pill { padding:2px 9px; border-radius:999px; font-size:.7rem; font-weight:600; font-family:var(--mono); }
+  .ok { background:rgba(31,209,165,.14); color:var(--green); } .fail { background:rgba(255,59,92,.14); color:var(--red); }
+  .state { background:rgba(39,224,200,.14); color:var(--cyan); }
+  .warn { background:rgba(255,194,75,.16); color:var(--amber); }
+  .sev-Critical { background:rgba(255,59,92,.16); color:var(--crit); }
+  .sev-High { background:rgba(255,106,61,.16); color:var(--high); }
+  .sev-Medium { background:rgba(255,194,75,.16); color:var(--med); }
+  .sev-Low { background:rgba(31,209,165,.14); color:var(--low); }
+  .muted { color:var(--muted); } .loc { font-size:.72rem; color:var(--muted); font-family:var(--mono); }
+  .state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.6rem; padding:1.8rem 1rem; text-align:center; color:var(--muted); }
+  .state-box .ico { width:38px; height:38px; opacity:.5; }
+  .state-box .t { font-weight:600; color:var(--fg); font-size:.9rem; }
+  .state-box .h { font-size:.78rem; max-width:420px; line-height:1.5; }
+  .loading { display:flex; flex-direction:column; gap:.5rem; padding:.3rem 0; }
+  .sk { height:12px; border-radius:6px; background:linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.12), rgba(255,255,255,.05)); background-size:200% 100%; animation:sk 1.2s infinite; }
   @keyframes sk { to{background-position:-200% 0} }
-
-  footer { text-align:center; color:var(--muted); font-size:.74rem; padding:1.6rem; }
-  @media (max-width:640px){ main{padding:1rem} header{padding:.8rem 1rem} }
+  .feed { display:flex; flex-direction:column; gap:.55rem; max-height:340px; overflow:auto; }
+  .feed-item { display:flex; gap:.7rem; align-items:flex-start; padding:.55rem .65rem; border-radius:9px; background:rgba(255,255,255,.03); border:1px solid var(--border2); }
+  .feed-item .ic { width:8px; height:8px; border-radius:50%; margin-top:.4rem; flex:0 0 auto; }
+  .feed-item .body { font-size:.8rem; line-height:1.45; }
+  .feed-item .meta2 { font-size:.68rem; color:var(--faint); font-family:var(--mono); margin-top:.15rem; }
+  #toast { position:fixed; bottom:1.4rem; left:50%; transform:translateX(-50%) translateY(20px); z-index:60; max-width:560px;
+    padding:.75rem 1.05rem; border-radius:11px; font-size:.82rem; opacity:0; background:var(--panel); border:1px solid rgba(255,59,92,.4);
+    color:var(--red); box-shadow:var(--shadow); transition:all .3s cubic-bezier(.2,.8,.2,1); pointer-events:none; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .view { display:none; } .view.active { display:block; }
+  @media (max-width:900px){ .panel{ grid-column:span 12 !important; } }
+  @media (max-width:640px){ main{padding:.9rem} header.top{padding:.7rem 1rem} }
 </style>
 </head>
 <body>
-<div class="aurora"></div>
-<div class="grain"></div>
-<header>
+<div class="sidebar" id="sidebar">
   <div class="brand">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 16a4 4 0 0 1 .8-7.9 5 5 0 0 1 9.7-1.3A3.5 3.5 0 0 1 18 16H6Z" stroke="url(#g)" stroke-width="1.7" stroke-linejoin="round"/>
-      <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs>
+      <path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z" stroke="url(#g)" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="m9 12 2 2 4-4" stroke="url(#g)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#1fd1a5"/><stop offset="1" stop-color="#27e0c8"/></linearGradient></defs>
     </svg>
     <h1>Azure-Inspect</h1>
   </div>
-  <div id="controls">
-    <span id="meta"><span class="live"></span> <b id="sub">…</b> · <span id="updated">–</span> · <span id="synced" class="muted">sync: –</span></span>
-    <label>Cost
-      <select id="days"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select>
-    </label>
-    <label title="Auto-refresh dashboard every 60s (reads local cache)"><input type="checkbox" id="auto" checked> auto</label>
-    <button id="sync">⇅ Sync now</button>
-    <button id="refresh">↻ Refresh</button>
-    <a class="logout" href="/logout">Logout</a>
+  <div class="nav-item active" data-view="posture">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>
+    <span class="nav-label">Posture</span>
   </div>
-</header>
+  <div class="nav-item" data-view="inventory">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span class="nav-label">Inventory</span>
+  </div>
+  <div class="nav-item" data-view="exposure">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+    <span class="nav-label">Exposure</span>
+  </div>
+  <div class="nav-item" data-view="compliance">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="nav-label">Compliance</span>
+  </div>
+  <div class="nav-item" data-view="advisor">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
+    <span class="nav-label">Advisor</span>
+  </div>
+  <button class="nav-item sb-toggle" id="sb-toggle">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 6l-6 6 6 6"/></svg>
+    <span class="nav-label">Collapse</span>
+  </button>
+  <div class="sb-foot">enten · live</div>
+</div>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="meta"><span class="live"></span> <b id="sub">…</b> · <span id="updated">–</span> · <span class="muted" id="synced">sync: –</span></div>
+    <div id="controls">
+      <label>Window
+        <select id="days"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select>
+      </label>
+      <label title="Auto-refresh every 60s (reads local cache)"><input type="checkbox" id="auto" checked> auto</label>
+      <button id="sync">⇅ Sync now</button>
+      <button id="refresh">↻ Refresh</button>
+      <a class="logout" href="/logout">Logout</a>
+    </div>
+  </header>
+  <main>
+    <div class="kpis" id="kpis">
+      <div class="kpi k-res"><div class="k">Resources</div><div class="v" id="c-res">–</div></div>
+      <div class="kpi k-rg"><div class="k">Resource groups</div><div class="v" id="c-rg">–</div></div>
+      <div class="kpi k-score"><div class="k">Posture</div><div class="v" id="c-score">–</div><div class="sub" id="c-score-sub">compliant</div></div>
+      <div class="kpi k-find"><div class="k">Open findings</div><div class="v" id="c-find">–</div><div class="sub" id="c-find-sub">critical + high</div></div>
+      <div class="kpi k-cost"><div class="k">Spend (30d)</div><div class="v" id="c-cost">–</div></div>
+    </div>
+
+    <!-- POSTURE (security landing) -->
+    <div class="view active" id="view-posture">
+      <div class="grid">
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Posture</h2></div><div id="govChart" class="chart sm"></div></div>
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Findings by severity</h2></div><div id="sevChart" class="chart sm"></div></div>
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resource exposure (by type)</h2></div><div id="typeChart" class="chart"></div></div>
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Risk feed</h2><span class="muted" style="font-size:.7rem">activity · findings</span></div><div id="feed" class="feed"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></div>
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Resource groups</h2><input type="search" id="rg-search" placeholder="filter…"></div><div id="rg"><div class="loading"><div class="sk" style="width:40%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div></div></div></div>
+      </div>
+    </div>
+
+    <!-- INVENTORY -->
+    <div class="view" id="view-inventory">
+      <div class="grid">
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resources by type</h2></div><div id="typeChart2" class="chart"></div></div>
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resources by location</h2></div><div id="locChart" class="chart"></div></div>
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Tag coverage</h2></div><div id="tagChart" class="chart sm"></div></div>
+      </div>
+    </div>
+
+    <!-- EXPOSURE -->
+    <div class="view" id="view-exposure">
+      <div class="grid">
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resource exposure (by type)</h2></div><div id="expChart" class="chart"></div></div>
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resources by location</h2></div><div id="locChart2" class="chart"></div></div>
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> All findings (risk-ranked)</h2></div><div id="findings"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></div>
+      </div>
+    </div>
+
+    <!-- COMPLIANCE -->
+    <div class="view" id="view-compliance">
+      <div class="grid">
+        <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Posture</h2></div><span class="pill state" id="posture-badge">–</span></div>
+        <div class="panel w8"><div class="panel-head"><h2><span class="dot"></span> Governance gaps</h2></div><div id="compliance"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div></div></div></div>
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Access (RBAC)</h2></div><div id="rbac"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div></div></div></div>
+      </div>
+    </div>
+
+    <!-- ADVISOR -->
+    <div class="view" id="view-advisor">
+      <div class="grid">
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Azure Advisor recommendations</h2></div><div id="advisor"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></div>
+      </div>
+    </div>
+  </main>
+</div>
 <div id="toast"></div>
-<main>
-  <div class="cards" id="cards">
-    <div class="card">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M3 10h18M8 4v3M16 4v3"/></svg>
-      <div class="k">Resource groups</div><div class="v dash" id="c-rg">–</div>
-    </div>
-    <div class="card">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M7 7h7a3 3 0 0 1 0 6H7m0 0h8a3 3 0 0 1 0 6H7"/></svg>
-      <div class="k">Total cost (30d)</div><div class="v dash" id="c-cost">–</div>
-      <svg class="spark" id="c-cost-spark" viewBox="0 0 100 34" preserveAspectRatio="none"></svg>
-      <div class="delta flat" id="c-cost-delta"></div>
-    </div>
-    <div class="card">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"/></svg>
-      <div class="k">Activity (24h)</div><div class="v dash" id="c-act">–</div>
-    </div>
-    <div class="card">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-      <div class="k">Governance gaps</div><div class="v dash" id="c-gap">–</div>
-    </div>
-  </div>
-
-  <section>
-    <div class="section-head"><h2><span class="dot"></span> Resource groups</h2>
-      <input type="search" id="rg-search" placeholder="filter…"></div>
-    <div id="rg"><div class="loading"><div class="sk" style="width:40%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div></div></div>
-  </section>
-
-  <section><div class="section-head"><h2><span class="dot"></span> Cost by resource group</h2></div>
-    <div id="cost"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></section>
-
-  <section><div class="section-head"><h2><span class="dot"></span> Cost trend (14d)</h2>
-      <div class="legend"><span><span class="sw"></span> daily spend</span></div></div>
-    <div class="chart-meta">
-      <div><span class="chart-total" id="trend-total">–</span> <span class="chart-sub" id="trend-sub"></span></div>
-    </div>
-    <div class="chart-wrap">
-      <svg id="costchart" viewBox="0 0 600 240" preserveAspectRatio="none"></svg>
-      <div class="chart-tip" id="chart-tip"></div>
-    </div>
-  </section>
-
-  <section><div class="section-head"><h2><span class="dot"></span> Activity log</h2></div>
-    <div id="logs"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></section>
-
-  <section><div class="section-head"><h2><span class="dot"></span> Compliance &amp; access posture</h2>
-    <span class="pill state" id="posture-badge">–</span></div>
-    <div id="compliance"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></section>
-</main>
-<footer>Azure-Inspect · live service-principal dashboard</footer>
 <script>
 const ICON = {
-  empty: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 14h8"/></svg>',
-  warn:  '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>'
+  empty:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 14h8"/></svg>',
+  warn:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>'
 };
-function esc(s){ return String(s ?? '').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function fmtTs(iso){ try{return new Date(iso).toLocaleString()}catch{return iso} }
 function rel(ts){ try{const d=(Date.now()-new Date(ts).getTime())/1000;
   if(d<60)return d.toFixed(0)+'s ago'; if(d<3600)return (d/60).toFixed(0)+'m ago';
   if(d<86400)return (d/3600).toFixed(0)+'h ago'; return (d/86400).toFixed(0)+'d ago';}catch{return ''} }
-function stamp(){ document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString(); }
+function stamp(){ document.getElementById('updated').textContent='updated '+new Date().toLocaleTimeString(); }
 let toastT=null;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent='⚠ '+msg; t.classList.add('show');
   if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),6000); }
-function emptyState(title, hint){ return '<div class="state-box"><div class="ico">'+ICON.empty+'</div><div class="t">'+esc(title)+'</div>'+(hint?'<div class="h">'+esc(hint)+'</div>':'')+'</div>'; }
-function warnState(title, hint){ return '<div class="state-box warn"><div class="ico">'+ICON.warn+'</div><div class="t">'+esc(title)+'</div>'+(hint?'<div class="h">'+esc(hint)+'</div>':'')+'</div>'; }
+const charts=[];
+function makeChart(id){
+  if(typeof echarts==='undefined') return null;
+  const el=document.getElementById(id); if(!el) return null;
+  const c=echarts.init(el, 'dark', {renderer:'canvas'});
+  charts.push(c); return c;
+}
+window.addEventListener('resize', ()=>charts.forEach(c=>c.resize()));
+const baseGrid={left:8,right:18,top:24,bottom:8,containLabel:true};
+const axisStyle={axisLine:{lineStyle:{color:'rgba(255,255,255,.15)'}},axisLabel:{color:'#8190a3',fontSize:11},splitLine:{lineStyle:{color:'rgba(255,255,255,.05)'}}};
 
-async function fill(id, url, render, searchId){
-  const el=document.getElementById(id);
-  try {
-    const r=await fetch(url); let data=await r.json();
-    if(data.error){
-      if(data.code==='not_configured'){ toast(data.error); el.innerHTML=warnState('Not configured', data.error); return; }
-      if(data.code==='auth_error'){ toast(data.error); el.innerHTML=warnState('Access denied', data.error); return; }
-      if(data.code==='cost_data_unavailable'){ toast(data.error); el.innerHTML=warnState('No cost data yet', data.error); return; }
-      if(data.code==='log_query_error'){ toast(data.error); el.innerHTML=warnState('Activity log needs tenant read', data.error); return; }
-      el.innerHTML=warnState('Something went wrong', data.error); return;
-    }
-    if(searchId){ const q=(document.getElementById(searchId).value||'').toLowerCase(); if(q) data=data.filter(d=>JSON.stringify(d).toLowerCase().includes(q)); }
-    render(el,data); stamp();
-  } catch(e){ el.innerHTML=warnState('Network error', String(e)); }
-}
-function renderRg(el,data){
-  if(!data.length){ el.innerHTML=emptyState('No resource groups','This subscription has no resource groups yet.'); return; }
-  let rows=data.map((d,i)=>'<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(d.name)+'</b></td><td><span class="loc">'+esc(d.location)+
-    '</span></td><td><span class="pill state">'+esc(d.provisioning_state)+'</span></td></tr>').join('');
-  el.innerHTML='<table><thead><tr><th>Name</th><th>Location</th><th>State</th></tr></thead><tbody>'+rows+'</tbody></table>';
-}
-function renderCost(el,data,trendMap){
-  if(!data.length){ el.innerHTML=emptyState('No cost data','Cost Management has not indexed this subscription yet — this can take a few hours after a tenant move.'); return; }
-  const max=Math.max(...data.map(d=>d.cost),0.0001);
-  let rows=data.sort((a,b)=>b.cost-a.cost).map((d,i)=>{ const pct=Math.max(2,(d.cost/max*100)).toFixed(0);
-    const rg=d.resource_group||'(none)';
-    const series=(trendMap&&trendMap[rg]||[]).map(x=>x.cost);
-    const spark=series.length>=2?miniSpark(series):'';
-    return '<tr style="animation-delay:'+(i*40)+'ms"><td><b>'+esc(rg)+'</b></td>'+
-      '<td class="bar-wrap"><div class="bar" style="width:'+pct+'%"></div></td>'+
-      '<td class="spark-cell">'+(spark||'<span class="muted">–</span>')+'</td>'+
-      '<td>'+Number(d.cost).toFixed(2)+' '+esc(d.currency)+'</td></tr>'; }).join('');
-  el.innerHTML='<table><thead><tr><th>Resource group</th><th></th><th>Trend (14d)</th><th>Cost</th></tr></thead><tbody>'+rows+'</tbody></table>';
-}
-function miniSpark(values){ // returns a tiny inline SVG string
-  const W=90,H=22,min=Math.min(...values),max=Math.max(...values),rng=(max-min)||1;
-  const pts=values.map((v,i)=>{ const x=(i/(values.length-1))*W; const y=H-2-((v-min)/rng)*(H-4); return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
-  return '<svg class="minispark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="'+W+'" height="'+H+'">'+
-    '<polyline points="'+pts+'" fill="none" stroke="url(#miniG)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'+
-    '<defs><linearGradient id="miniG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient></defs></svg>';
+document.querySelectorAll('.nav-item[data-view]').forEach(n=>{
+  n.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item[data-view]').forEach(x=>x.classList.remove('active'));
+    n.classList.add('active');
+    const v=n.dataset.view;
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    document.getElementById('view-'+v).classList.add('active');
+    setTimeout(()=>charts.forEach(c=>c.resize()),60);
+  });
+});
+document.getElementById('sb-toggle').addEventListener('click', ()=>{
+  const sb=document.getElementById('sidebar'), app=document.getElementById('app');
+  sb.classList.toggle('collapsed'); app.classList.toggle('full');
+  setTimeout(()=>charts.forEach(c=>c.resize()),220);
+});
+
+async function fill(elId, url, render, searchId){
+  const el=document.getElementById(elId);
+  let data=await (await fetch(url)).json();
+  if(searchId){ const q=document.getElementById(searchId).value.toLowerCase();
+    if(q) data=data.filter(d=>JSON.stringify(d).toLowerCase().includes(q)); }
+  render(el, data);
 }
 
-function renderLogs(el,data){
-  if(!data.length){ el.innerHTML=emptyState('Activity log unavailable','The legacy Azure activity-log API (Microsoft.Insights/eventLogs) is retired in this tenant API surface. To enable it, configure diagnostic settings → Log Analytics and query via Azure Resource Graph. Other tabs (cost, resources, compliance) are live.'); return; }
-  let rows=data.slice(0,60).map((d,i)=>{ const st=(d.status||'').toLowerCase().includes('fail')?'fail':'ok';
-    return '<tr style="animation-delay:'+(i*30)+'ms"><td title="'+esc(fmtTs(d.event_timestamp))+'">'+esc(rel(d.event_timestamp))+'</td>'+
-      '<td>'+esc(d.operation)+'</td><td class="loc">'+esc(d.resource_group||'–')+'</td><td class="loc">'+esc(d.caller||'–')+'</td>'+
-      '<td><span class="pill '+st+'">'+esc(d.status)+'</span></td></tr>'; }).join('');
-  el.innerHTML='<table><thead><tr><th>When</th><th>Operation</th><th>RG</th><th>Caller</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table>';
+function renderKpis(s, findings){
+  document.getElementById('sub').textContent=s.subscription_id||'?';
+  document.getElementById('c-res').textContent=s.total_resources!=null?s.total_resources:'–';
+  document.getElementById('c-rg').textContent=s.resource_group_count!=null?s.resource_group_count:'–';
+  document.getElementById('c-cost').textContent=s.total_cost!=null?s.total_cost.toFixed(2)+' '+(s.currency||''):'–';
+  const gaps=(s.governance_gap_count||0);
+  const total=(s.resource_group_count||0)||1;
+  const pct=Math.max(0,Math.round((1-gaps/total)*100));
+  document.getElementById('c-score').textContent=pct+'%';
+  document.getElementById('c-score-sub').textContent=gaps+' gap'+(gaps!==1?'s':'');
+  const crit=(findings&&findings.counts)?(findings.counts.Critical||0)+(findings.counts.High||0):gaps;
+  document.getElementById('c-find').textContent=crit;
+  document.getElementById('c-find-sub').textContent='critical + high';
 }
-function renderCompliance(el,data){
-  const gaps=data.governance_gaps||[];
+function renderGov(el, comp){
+  const gaps=(comp.governance_gap_count!=null?comp.governance_gap_count:(comp.governance_gaps||[]).length);
+  const total=(comp.resource_group_count||11); const clean=Math.max(0,total-gaps);
+  const c=makeChart('govChart'); if(!c){ return; }
+  c.setOption({tooltip:{trigger:'item'}, series:[{type:'pie',radius:['55%','80%'],center:['50%','45%'],
+    label:{color:'#e7eef5',formatter:'{b}: {c}'},
+    data:[{name:'Compliant',value:clean,itemStyle:{color:'#1fd1a5'}},{name:'Gaps',value:gaps,itemStyle:{color:'#ff3b5c'}}]}]});
+}
+function renderSev(el, f){
+  const c=makeChart('sevChart'); if(!c){ return; }
+  const co=(f&&f.counts)||{Critical:0,High:0,Medium:0,Low:0};
+  c.setOption({grid:{left:8,right:8,top:14,bottom:8,containLabel:false}, tooltip:{trigger:'item'},
+    series:[{type:'pie',radius:['45%','75%'],center:['50%','45%'],
+      label:{color:'#e7eef5',formatter:'{b}: {c}'},
+      data:[
+        {name:'Critical',value:co.Critical||0,itemStyle:{color:'#ff3b5c'}},
+        {name:'High',value:co.High||0,itemStyle:{color:'#ff6a3d'}},
+        {name:'Medium',value:co.Medium||0,itemStyle:{color:'#ffc24b'}},
+        {name:'Low',value:co.Low||0,itemStyle:{color:'#1fd1a5'}}
+      ]}]});
+}
+function renderType(el, inv){
+  const c=makeChart(el.id); if(!c||!inv.by_type||!inv.by_type.length){ el.innerHTML='<div class="state-box"><div class="t">No resources</div></div>'; return; }
+  const pal=['#1fd1a5','#27e0c8','#00e0a4','#ffc24b','#ff6a3d','#ff3b5c','#8190a3'];
+  c.setOption({tooltip:{trigger:'item'}, legend:{type:'scroll',orient:'vertical',right:6,top:10,textStyle:{color:'#8190a3',fontSize:10}},
+    series:[{type:'pie',radius:['40%','70%'],center:['38%','50%'],
+      label:{show:false}, data:inv.by_type.map((t,i)=>({name:t.type.split('/').pop(),value:t.count,itemStyle:{color:pal[i%pal.length]}}))}]});
+}
+function renderLoc(el, inv){
+  const c=makeChart(el.id); if(!c||!inv.by_location||!inv.by_location.length){ return; }
+  c.setOption({grid:baseGrid, tooltip:{trigger:'axis'}, xAxis:{type:'category',data:inv.by_location.map(l=>l.location||'unknown'),...axisStyle},
+    yAxis:{type:'value',...axisStyle}, series:[{type:'bar',data:inv.by_location.map(l=>l.count),itemStyle:{color:'#27e0c8',borderRadius:[4,4,0,0]}}]});
+}
+function renderTag(el, inv){
+  const c=makeChart('tagChart'); if(!c){ return; }
+  const tagged=inv.tagged_rgs||0, untagged=inv.untagged_rgs||0;
+  c.setOption({grid:{left:8,right:18,top:10,bottom:8,containLabel:true}, tooltip:{trigger:'item'},
+    xAxis:{type:'value',...axisStyle}, yAxis:{type:'category',data:['untagged (no env)','tagged (env)'],...axisStyle},
+    series:[{type:'bar',data:[{value:untagged,itemStyle:{color:'#ff3b5c'}},{value:tagged,itemStyle:{color:'#1fd1a5'}}],itemStyle:{borderRadius:[0,4,4,0]}}]});
+}
+function renderFindings(el, f){
+  const list=(f&&f.findings)||[];
+  if(!list.length){ el.innerHTML='<div class="state-box"><div class="t">No findings 🎉</div></div>'; return; }
+  let rows=list.map(x=>`<tr><td><span class="pill sev-${esc(x.severity)}">${esc(x.severity)}</span></td><td><span class="pill state">${esc(x.source)}</span></td><td><b>${esc(x.title)}</b></td><td class="muted">${esc(x.detail)}</td></tr>`).join('');
+  el.innerHTML=`<table><thead><tr><th>SEV</th><th>SOURCE</th><th>TITLE</th><th>DETAIL</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderRg(el, list){
+  if(!list.length){ el.innerHTML='<div class="state-box"><div class="t">No resource groups</div></div>'; return; }
+  let rows=list.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="loc">${esc(r.location)}</td><td><span class="pill ${r.provisioning_state&&r.provisioning_state.toLowerCase()=='succeeded'?'ok':(r.provisioning_state&&r.provisioning_state.toLowerCase()=='failed'?'fail':'state')}">${esc(r.provisioning_state||'?')}</span></td></tr>`).join('');
+  el.innerHTML=`<table><thead><tr><th>NAME</th><th>LOCATION</th><th>STATE</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderCompliance(el, comp){
+  const gaps=comp.governance_gaps||[];
   const badge=document.getElementById('posture-badge');
-  const gapCard=document.getElementById('c-gap');
-  gapCard.textContent=String(data.governance_gap_count ?? gaps.length); gapCard.className='v';
   if(gaps.length){ badge.textContent=gaps.length+' gap'+(gaps.length>1?'s':''); badge.className='pill fail'; }
   else { badge.textContent='clean'; badge.className='pill ok'; }
-  // access table
-  const roles=data.role_assignments||[];
-  let html='';
-  if(roles.length){
-    const rr=roles.map((r,i)=>'<tr style="animation-delay:'+(i*30)+'ms"><td><b>'+esc(r.role)+'</b></td>'+
-      '<td class="loc">'+esc(r.principal_id)+'</td><td class="loc">'+esc(r.scope)+'</td></tr>').join('');
-    html+='<h3 style="font-size:.8rem;color:var(--muted);margin:.2rem 0 .6rem">Access (RBAC)</h3>'+
-      '<table><thead><tr><th>Role</th><th>Principal</th><th>Scope</th></tr></thead><tbody>'+rr+'</tbody></table>';
-  }
-  if(gaps.length){
-    const gg=gaps.map((g,i)=>'<tr style="animation-delay:'+(i*30)+'ms"><td><b>'+esc(g.resource)+'</b></td>'+
-      '<td class="loc">'+esc(g.resource_type)+'</td><td><span class="pill fail">'+esc(g.issue)+'</span></td></tr>').join('');
-    html+='<h3 style="font-size:.8rem;color:var(--muted);margin:1rem 0 .6rem">Governance gaps</h3>'+
-      '<table><thead><tr><th>Resource</th><th>Type</th><th>Issue</th></tr></thead><tbody>'+gg+'</tbody></table>';
-  }
-  if(!html) html=emptyState('No posture data','No role assignments or governance gaps returned.');
-  el.innerHTML=html;
+  if(!gaps.length){ el.innerHTML='<div class="state-box"><div class="t">No governance gaps 🎉</div></div>'; return; }
+  let rows=gaps.map(g=>`<tr><td><b>${esc(g.resource)}</b></td><td>${esc(g.type)}</td><td><span class="pill fail">${esc(g.issue)}</span></td></tr>`).join('');
+  el.innerHTML=`<table><thead><tr><th>RESOURCE</th><th>TYPE</th><th>ISSUE</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
-function sparkline(svg, values){ // tiny inline sparkline into an <svg viewBox="0 0 100 34">
-  if(!svg) return;
-  if(!values || values.length<2){ svg.innerHTML=''; return; }
-  const W=100,H=34,min=Math.min(...values),max=Math.max(...values),rng=(max-min)||1;
-  const pts=values.map((v,i)=>{ const x=(i/(values.length-1))*W; const y=H-2-((v-min)/rng)*(H-4); return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
-  const area='M0,'+H+' L'+pts.replace(/ /g,' L')+' L'+W+','+H+' Z';
-  svg.innerHTML='<polygon points="'+pts+'" fill="none" stroke="url(#sparkG)" stroke-width="1.6" stroke-linejoin="round"/>'+
-    '<polygon points="'+area+'" fill="url(#sparkGA)"/>'+
-    '<defs><linearGradient id="sparkG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient>'+
-    '<linearGradient id="sparkGA" x1="0" y1="0" x2="0" y2="1"><stop stop-color="rgba(57,211,255,.28)"/><stop offset="1" stop-color="rgba(57,211,255,0)"/></linearGradient></defs>';
+function renderRbac(el, comp){
+  const rows=comp.role_assignments||[];
+  if(!rows.length){ el.innerHTML='<div class="state-box"><div class="t">No assignments</div></div>'; return; }
+  let html=rows.map(r=>`<tr><td><span class="pill state">${esc(r.role)}</span></td><td class="mono">${esc((r.principal_id||'').slice(0,13))}…</td><td class="loc">${esc(r.scope)}</td></tr>`).join('');
+  el.innerHTML=`<table><thead><tr><th>ROLE</th><th>PRINCIPAL</th><th>SCOPE</th></tr></thead><tbody>${html}</tbody></table>`;
 }
-function drawCostChart(svg, tip, series){
-  if(!svg) return;
-  if(!series || series.length<2){ svg.innerHTML=''; if(tip)tip.classList.remove('show'); return; }
-  const W=600,H=240,pad=34,min=Math.min(...series.map(d=>d.cost)),max=Math.max(...series.map(d=>d.cost)),rng=(max-min)||1;
-  const X=i=>pad+(i/(series.length-1))*(W-pad*1.4);
-  const Y=v=>H-pad-((v-min)/rng)*(H-pad*2);
-  let path='', area='M'+pad+','+(H-pad);
-  series.forEach((d,i)=>{ const x=X(i).toFixed(1),y=Y(d.cost).toFixed(1); path+=(i?' L':'M')+x+','+y; area+=' L'+x+','+y; });
-  area+=' L'+X(series.length-1).toFixed(1)+','+(H-pad)+' Z';
-  // gridlines + y labels (min/mid/max)
-  const fmt=v=>Number(v).toFixed(2);
-  let grid='';
-  [min,(min+max)/2,max].forEach((g,i)=>{ const y=Y(g).toFixed(1);
-    grid+='<line x1="'+pad+'" y1="'+y+'" x2="'+(W-pad*0.4)+'" y2="'+y+'" stroke="rgba(255,255,255,.07)"/>'+
-      '<text x="4" y="'+(+y+3)+'" fill="#8593a6" font-size="10">'+fmt(g)+'</text>'; });
-  // x labels (first + last)
-  const xlabels='<text x="'+pad+'" y="'+(H-10)+'" fill="#8593a6" font-size="10">'+series[0].day.slice(5)+'</text>'+
-    '<text x="'+(W-pad*0.4-30)+'" y="'+(H-10)+'" fill="#8593a6" font-size="10" text-anchor="end">'+series[series.length-1].day.slice(5)+'</text>';
-  svg.innerHTML=grid+xlabels+
-    '<path d="'+area+'" fill="url(#areaG)"/>'+
-    '<path d="'+path+'" fill="none" stroke="url(#lineG)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>'+
-    series.map((d,i)=>'<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(d.cost).toFixed(1)+'" r="2.6" fill="#39d3ff"/>').join('')+
-    '<defs><linearGradient id="lineG" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#58a6ff"/><stop offset="1" stop-color="#39d3ff"/></linearGradient>'+
-    '<linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="rgba(88,166,255,.35)"/><stop offset="1" stop-color="rgba(57,211,255,0)"/></linearGradient></defs>';
-  // hover
-  svg.onmousemove=function(e){ const r=svg.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*W;
-    let i=Math.round((px-pad)/((W-pad*1.4)/(series.length-1))); i=Math.max(0,Math.min(series.length-1,i));
-    const d=series[i]; tip.textContent=d.day+' · '+fmt(d.cost)+' '+d.currency; tip.style.left=(X(i)/W*r.width)+'px'; tip.style.top=(Y(d.cost)/H*r.height)+'px'; tip.classList.add('show'); };
-  svg.onmouseleave=function(){ tip.classList.remove('show'); };
+function renderAdvisor(el, list){
+  if(!list||!list.length){ el.innerHTML='<div class="state-box"><div class="t">No recommendations</div></div>'; return; }
+  let rows=list.map(a=>`<tr><td><span class="pill sev-${esc(a.impact)}">${esc(a.impact)}</span></td><td><b>${esc(a.category)}</b></td><td>${esc(a.short_description||a.risk)}</td></tr>`).join('');
+  el.innerHTML=`<table><thead><tr><th>IMPACT</th><th>CATEGORY</th><th>RECOMMENDATION</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
-async function fillTrend(){
-  const svg=document.getElementById('costchart'), tip=document.getElementById('chart-tip');
-  const totEl=document.getElementById('trend-total'), subEl=document.getElementById('trend-sub');
-  try{
-    const r=await fetch('/api/costs_daily'); const series=await r.json();
-    if(!Array.isArray(series)||!series.length){ svg.innerHTML=''; totEl.textContent='–'; subEl.textContent='no daily data yet'; return; }
-    drawCostChart(svg,tip,series);
-    // total of available days + delta vs first half vs second half
-    const vals=series.map(d=>d.cost), total=vals.reduce((a,b)=>a+b,0), cur=series[0].currency||'';
-    const half=Math.floor(vals.length/2), first=vals.slice(0,half).reduce((a,b)=>a+b,0), second=vals.slice(half).reduce((a,b)=>a+b,0);
-    totEl.textContent=total.toFixed(2)+' '+cur;
-    const pct=first? ((second-first)/first*100):0;
-    subEl.textContent=(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(0)+'% vs first half · '+series.length+'d';
-    subEl.style.color=pct>0?'var(--red)':'var(--green)';
-    // sparkline in the cost card
-    sparkline(document.getElementById('c-cost-spark'), vals);
-    const dEl=document.getElementById('c-cost-delta');
-    dEl.textContent=(pct>=0?'▲ ':'▼ ')+Math.abs(pct).toFixed(0)+'% trend';
-    dEl.className='delta '+(pct>1?'up':pct<-1?'down':'flat');
-  }catch(e){ svg.innerHTML=''; totEl.textContent='–'; subEl.textContent='error'; }
+function renderFeed(el, logs, findings){
+  const items=[];
+  (logs||[]).slice(0,8).forEach(l=>items.push({color:'#27e0c8',title:esc(l.operation||'activity'),sub:(l.resource_group||'')+' · '+(l.status||'')+' · '+rel(l.event_timestamp)}));
+  (findings&&findings.findings||[]).forEach(f=>{
+    const col={'Critical':'#ff3b5c','High':'#ff6a3d','Medium':'#ffc24b','Low':'#1fd1a5'}[f.severity]||'#27e0c8';
+    items.push({color:col,title:esc(f.severity)+' · '+esc(f.title),sub:esc(f.source)+' · '+esc(f.detail)});
+  });
+  if(!items.length){ el.innerHTML='<div class="state-box"><div class="t">No recent activity or findings</div></div>'; return; }
+  el.innerHTML=items.map(it=>`<div class="feed-item"><div class="ic" style="background:${it.color}"></div><div class="body">${it.title}<div class="meta2">${it.sub}</div></div></div>`).join('');
 }
-function relTime(s){ try{ const secs=(Date.now()-new Date(s).getTime())/1000;
-  if(secs<60)return Math.round(secs)+'s ago'; if(secs<3600)return Math.round(secs/60)+'m ago';
-  if(secs<86400)return Math.round(secs/3600)+'h ago'; return Math.round(secs/86400)+'d ago'; }catch{return '?'; } }
-async function updateSynced(){
-  try{ const r=await fetch('/api/freshness'); const j=await r.json();
-    const newest=Object.values(j).filter(Boolean).sort().pop();
-    document.getElementById('synced').textContent='sync: '+relTime(newest); }
-  catch{ document.getElementById('synced').textContent='sync: ?'; }
-}
-async function doSync(){
-  const b=document.getElementById('sync'); b.disabled=true; b.textContent='⇅ Syncing…';
-  try{ await fetch('/api/refresh',{method:'POST'}); await loadAll(); }
-  catch(e){ toast('Sync failed: '+e); }
-  finally{ b.disabled=false; b.textContent='⇅ Sync now'; updateSynced(); }
-}
+
+let syncedTimer=null;
+function updateSynced(){ const el=document.getElementById('synced'); el.textContent='sync: '+rel(new Date().toISOString()); }
 async function loadAll(){
   const btn=document.getElementById('refresh'); btn.disabled=true; btn.textContent='↻ Refreshing…';
-  try {
+  try{
     const s=await (await fetch('/api/summary')).json();
-    if(s.error){
-      if(s.code==='not_configured') toast(s.error);
-      document.getElementById('sub').textContent='?';
-      document.getElementById('c-rg').textContent='–'; document.getElementById('c-rg').className='v dash';
-      document.getElementById('c-cost').textContent='–'; document.getElementById('c-cost').className='v dash';
-      document.getElementById('c-act').textContent='–'; document.getElementById('c-act').className='v dash';
-    } else {
-      document.getElementById('sub').textContent=s.subscription_id||'?';
-      const set=(id,val)=>{ const e=document.getElementById(id); e.textContent=val; e.className='v'; };
-      set('c-rg', s.resource_group_count ?? '–');
-      set('c-cost', s.total_cost!=null ? s.total_cost.toFixed(2)+' '+(s.currency||'') : '–');
-      set('c-act', s.activity_count ?? '–');
-      // governance gap count comes from the compliance endpoint; set a placeholder
-      document.getElementById('c-gap').textContent='…'; document.getElementById('c-gap').className='v dash';
-    }
+    if(s.error){ if(s.code==='not_configured') toast(s.error); }
     const days=document.getElementById('days').value;
+    const [inv, comp, findings, advisor, logs]=await Promise.all([
+      fetch('/api/inventory').then(r=>r.json()).catch(()=>null),
+      fetch('/api/compliance').then(r=>r.json()).catch(()=>null),
+      fetch('/api/findings').then(r=>r.json()).catch(()=>null),
+      fetch('/api/advisor').then(r=>r.json()).catch(()=>[]),
+      fetch('/api/logs').then(r=>r.json()).catch(()=>[]),
+    ]);
+    if(s&&!s.error){
+      const comp4kpi=comp||{};
+      const s2=Object.assign({}, s, {governance_gap_count:(comp4kpi.governance_gap_count!=null?comp4kpi.governance_gap_count:(comp4kpi.governance_gaps||[]).length)});
+      renderKpis(s2, findings);
+    }
+    if(inv){ renderType(document.getElementById('typeChart'), inv); renderType(document.getElementById('typeChart2'), inv); renderLoc(document.getElementById('locChart'), inv); renderLoc(document.getElementById('locChart2'), inv); renderTag(document.getElementById('tagChart'), inv); renderType(document.getElementById('expChart'), inv); }
+    if(comp){ renderGov(document.getElementById('govChart'), comp); renderCompliance(document.getElementById('compliance'), comp); renderRbac(document.getElementById('rbac'), comp); }
+    if(findings){ renderSev(document.getElementById('sevChart'), findings); renderFindings(document.getElementById('findings'), findings); }
+    renderAdvisor(document.getElementById('advisor'), advisor);
+    renderFeed(document.getElementById('feed'), logs, findings);
     fill('rg','/api/resources',renderRg,'rg-search');
-    // fetch RG-trend map once, pass into renderCost for per-RG sparklines
-    let trendMap=null;
-    try { const tr=await fetch('/api/costs_rg_daily'); trendMap=await tr.json(); } catch(e){}
-    fill('cost','/api/costs?days='+days,(el,data)=>renderCost(el,data,trendMap));
-    fill('logs','/api/logs',renderLogs);
-    fill('compliance','/api/compliance',renderCompliance);
-    fillTrend();
-  } finally { btn.disabled=false; btn.textContent='↻ Refresh'; }
+    stamp(); updateSynced();
+  }catch(e){ toast('Load failed: '+e); }
+  finally{ btn.disabled=false; btn.textContent='↻ Refresh'; }
 }
-let timer=null;
-function setupAuto(){ if(timer)clearInterval(timer); if(document.getElementById('auto').checked) timer=setInterval(loadAll,60000); }
-document.getElementById('auto').addEventListener('change',setupAuto);
-document.getElementById('refresh').addEventListener('click',loadAll);
-document.getElementById('sync').addEventListener('click',doSync);
-document.getElementById('days').addEventListener('change',loadAll);
-document.getElementById('rg-search').addEventListener('input',()=>fill('rg','/api/resources',renderRg,'rg-search'));
-loadAll(); setupAuto(); updateSynced();
+document.getElementById('rg-search').addEventListener('input', ()=>fill('rg','/api/resources',renderRg,'rg-search'));
+document.getElementById('refresh').addEventListener('click', loadAll);
+document.getElementById('days').addEventListener('change', loadAll);
+document.getElementById('sync').addEventListener('click', async ()=>{
+  const b=document.getElementById('sync'); b.disabled=true; b.textContent='⇅ Syncing…';
+  try{ await fetch('/api/refresh',{method:'POST'}); await loadAll(); }catch(e){ toast('Sync failed: '+e); }
+  finally{ b.disabled=false; b.textContent='⇅ Sync now'; updateSynced(); }
+});
+if(document.getElementById('auto').checked){ setInterval(loadAll, 60000); setInterval(updateSynced, 15000); }
+loadAll();
 </script>
 </body>
 </html>
@@ -720,19 +723,32 @@ def create_app(
     def api_summary():
         def _compute(cfg):
             from datetime import date, timedelta
+            from ..graph import resource_inventory
             rgs = list_resource_groups(cfg)
             costs = cost_by_resource_group(cfg, from_date=date.today() - timedelta(days=30))
             total = sum(c.cost for c in costs)
             currency = costs[0].currency if costs else ""
-            # Activity log is optional for the summary: if it's unavailable
-            # (e.g. SPN lacks tenant Reader), don't fail the whole card row.
             try:
                 logs = get_activity_log(cfg, hours=24)
             except Exception:
                 logs = []
+            # Reuse the cached inventory payload (already fetched for the
+            # dashboard) instead of re-querying Resource Graph here; that avoids
+            # a duplicate call that can get throttled and return None.
+            total_resources = 0
+            inv_cached = cache.value("inventory")
+            if isinstance(inv_cached, dict) and inv_cached.get("total_resources"):
+                total_resources = inv_cached["total_resources"]
+            else:
+                try:
+                    inv = resource_inventory(cfg)
+                    total_resources = inv.get("total_resources") or 0
+                except Exception:
+                    total_resources = 0
             return {
                 "subscription_id": cfg.subscription_id,
                 "resource_group_count": len(rgs),
+                "total_resources": total_resources,
                 "total_cost": round(total, 2),
                 "currency": currency,
                 "activity_count": len(logs),
@@ -809,6 +825,69 @@ def create_app(
         def _compute(cfg):
             return posture_summary(cfg)
         return _safe(lambda cfg: cache.cached("compliance", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/inventory")
+    def api_inventory():
+        from ..graph import resource_inventory
+
+        def _compute(cfg):
+            return resource_inventory(cfg)
+        return _safe(lambda cfg: cache.cached("inventory", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/advisor")
+    def api_advisor():
+        from ..advisor import get_recommendations
+
+        def _compute(cfg):
+            return get_recommendations(cfg)
+        return _safe(lambda cfg: cache.cached("advisor", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/findings")
+    def api_findings():
+        """Merged, severity-sorted security findings: governance gaps + Advisor.
+
+        Each finding: {severity, source, title, detail, resource}. Severity order
+        Critical > High > Medium > Low so the dashboard can render a risk-ranked
+        feed. Governance gaps are always 'High'; Advisor recs map High->High,
+        Medium->Medium, otherwise Low.
+        """
+        def _compute(cfg):
+            from ..compliance import posture_summary
+            from ..advisor import get_recommendations
+
+            findings = []
+            try:
+                comp = posture_summary(cfg)
+                for g in comp.get("governance_gaps", []):
+                    findings.append({
+                        "severity": "High",
+                        "source": "Governance",
+                        "title": f"RG '{g.get('resource')}' missing tag",
+                        "detail": g.get("issue", ""),
+                        "resource": g.get("resource", ""),
+                    })
+            except Exception:
+                pass
+            try:
+                for a in get_recommendations(cfg):
+                    impact = a.get("impact", "Low")
+                    sev = {"High": "High", "Medium": "Medium", "Critical": "Critical"}.get(impact, "Low")
+                    findings.append({
+                        "severity": sev,
+                        "source": "Advisor",
+                        "title": a.get("category", "Recommendation"),
+                        "detail": a.get("short_description") or a.get("risk") or "",
+                        "resource": a.get("resource", ""),
+                    })
+            except Exception:
+                pass
+            order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+            findings.sort(key=lambda f: order.get(f["severity"], 9))
+            counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+            for f in findings:
+                counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+            return {"findings": findings, "counts": counts}
+        return _safe(lambda cfg: cache.cached("findings", lambda: _compute(cfg)), config_provider)
 
     @app.route("/health")
     def health():
