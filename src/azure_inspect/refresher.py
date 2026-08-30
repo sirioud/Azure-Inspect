@@ -93,6 +93,42 @@ def _build_jobs(cfg):
     }
 
 
+def _sample_history(cache: "DataCache") -> None:
+    """Append a rolling time-series sample so the dashboard can show trends.
+
+    Reads the already-cached summary + inventory (cheap, no extra Azure calls)
+    and stores a timestamped point: resource count, posture %, 30d spend.
+    Capped at the last 120 samples (~30h at the 15-min interval).
+    """
+    try:
+        summary = cache.value("summary") or {}
+        inv = cache.value("inventory") or {}
+        rgs = summary.get("resource_group_count") or 0
+        gaps = 0
+        comp = cache.value("compliance")
+        if isinstance(comp, dict):
+            gaps = comp.get("governance_gap_count")
+            if gaps is None:
+                gaps = len(comp.get("governance_gaps", []) or [])
+        compliant_pct = round((1 - (gaps / rgs if rgs else 0)) * 100) if rgs else 100
+        point = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "resources": inv.get("total_resources") or summary.get("total_resources") or 0,
+            "rgs": rgs,
+            "posture_pct": compliant_pct,
+            "cost": summary.get("total_cost") or 0,
+        }
+        hist = cache.value("history") or []
+        if not isinstance(hist, list):
+            hist = []
+        hist.append(point)
+        if len(hist) > 120:
+            hist = hist[-120:]
+        cache.set("history", hist)
+    except Exception as exc:  # never break the refresh loop
+        log.warning("history sample failed: %s", exc)
+
+
 def _refresh_once(cache: DataCache, cfg) -> dict[str, str]:
     """Refresh every dataset once. Returns {key: 'ok'|'error'}."""
     results: dict[str, str] = {}
@@ -113,6 +149,7 @@ def _refresh_once(cache: DataCache, cfg) -> dict[str, str]:
         # the pause after the last job.
         if i < len(names) - 1:
             time.sleep(7)
+    _sample_history(cache)
     return results
 
 

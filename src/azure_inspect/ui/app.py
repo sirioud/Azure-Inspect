@@ -178,6 +178,10 @@ _INDEX_HTML = """<!doctype html>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
     <span class="nav-label">Advisor</span>
   </div>
+  <div class="nav-item" data-view="alerts">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+    <span class="nav-label">Alerts</span>
+  </div>
   <button class="nav-item sb-toggle" id="sb-toggle">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 6l-6 6 6 6"/></svg>
     <span class="nav-label">Collapse</span>
@@ -195,6 +199,7 @@ _INDEX_HTML = """<!doctype html>
       <label title="Auto-refresh every 60s (reads local cache)"><input type="checkbox" id="auto" checked> auto</label>
       <button id="sync">⇅ Sync now</button>
       <button id="refresh">↻ Refresh</button>
+      <button id="export">⬇ Export</button>
       <a class="logout" href="/logout">Logout</a>
     </div>
   </header>
@@ -215,6 +220,9 @@ _INDEX_HTML = """<!doctype html>
         <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Resource exposure (by type)</h2></div><div id="typeChart" class="chart"></div></div>
         <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Risk feed</h2><span class="muted" style="font-size:.7rem">activity · findings</span></div><div id="feed" class="feed"><div class="loading"><div class="sk" style="width:50%"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div></div></div></div>
         <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Resource groups</h2><input type="search" id="rg-search" placeholder="filter…"></div><div id="rg"><div class="loading"><div class="sk" style="width:40%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div></div></div></div>
+        <div class="panel w4"><div class="panel-head"><h2><span class="dot"></span> Resources (trend)</h2></div><div id="resTrend" class="chart sm"></div></div>
+        <div class="panel w4"><div class="panel-head"><h2><span class="dot"></span> Posture % (trend)</h2></div><div id="postureTrend" class="chart sm"></div></div>
+        <div class="panel w4"><div class="panel-head"><h2><span class="dot"></span> Spend (trend)</h2></div><div id="costTrend" class="chart sm"></div></div>
       </div>
     </div>
 
@@ -249,6 +257,13 @@ _INDEX_HTML = """<!doctype html>
     <div class="view" id="view-advisor">
       <div class="grid">
         <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Azure Advisor recommendations</h2></div><div id="advisor"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="view" id="view-alerts">
+      <div class="grid">
+        <div class="panel w12"><div class="panel-head"><h2><span class="dot"></span> Alert rules</h2><span class="muted" id="alert-chan" style="font-size:.7rem"></span></div><div id="alerts"><div class="loading"><div class="sk" style="width:55%"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:65%"></div></div></div></div>
       </div>
     </div>
   </main>
@@ -398,6 +413,28 @@ function renderFeed(el, logs, findings){
   if(!items.length){ el.innerHTML='<div class="state-box"><div class="t">No recent activity or findings</div></div>'; return; }
   el.innerHTML=items.map(it=>`<div class="feed-item"><div class="ic" style="background:${it.color}"></div><div class="body">${it.title}<div class="meta2">${it.sub}</div></div></div>`).join('');
 }
+function renderAlerts(el, a){
+  const rules=(a&&a.rules)||[];
+  const chan=document.getElementById('alert-chan');
+  if(chan) chan.textContent=(a&&a.telegram_configured)?'Telegram: configured':'Telegram: not configured';
+  if(!rules.length){ el.innerHTML='<div class="state-box"><div class="t">No alert rules</div></div>'; return; }
+  const st={'ok':'ok','firing':'fail'};
+  let rows=rules.map(r=>{
+    const lf=r.last_fired?(function(){ try{return rel(new Date(parseFloat(r.last_fired)*1000).toISOString());}catch{return 'unknown';} })():'never';
+    return `<tr><td><span class="pill ${st[r.state]||'state'}">${esc(r.state)}</span></td><td><b>${esc(r.name)}</b></td><td class="muted">${esc(r.detail)}</td><td class="loc">${lf}</td></tr>`;
+  }).join('');
+  el.innerHTML=`<table><thead><tr><th>STATE</th><th>RULE</th><th>CONDITION</th><th>LAST FIRED</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderTrend(elId, hist, key, color){
+  const c=makeChart(elId); if(!c) return;
+  const data=(hist||[]).map(h=>({value:h[key], ts:h.ts}));
+  const sm=elId!=='resTrend'&&elId!=='postureTrend'&&elId!=='costTrend'?false:true;
+  c.setOption({grid:{left:8,right:12,top:14,bottom:sm?4:18,containLabel:true}, tooltip:{trigger:'axis'},
+    xAxis:{type:'time',axisLabel:{show:!sm,color:'#8190a3',fontSize:10},axisLine:{lineStyle:{color:'rgba(255,255,255,.15)'}}},
+    yAxis:{type:'value',...axisStyle},
+    series:[{type:'line',data:data.map(d=>[d.ts,d.value]),smooth:true,showSymbol:false,
+      areaStyle:{color:color+'22'},itemStyle:{color:color}}]});
+}
 
 let syncedTimer=null;
 function updateSynced(){ const el=document.getElementById('synced'); el.textContent='sync: '+rel(new Date().toISOString()); }
@@ -407,12 +444,14 @@ async function loadAll(){
     const s=await (await fetch('/api/summary')).json();
     if(s.error){ if(s.code==='not_configured') toast(s.error); }
     const days=document.getElementById('days').value;
-    const [inv, comp, findings, advisor, logs]=await Promise.all([
+    const [inv, comp, findings, advisor, logs, alerts, history]=await Promise.all([
       fetch('/api/inventory').then(r=>r.json()).catch(()=>null),
       fetch('/api/compliance').then(r=>r.json()).catch(()=>null),
       fetch('/api/findings').then(r=>r.json()).catch(()=>null),
       fetch('/api/advisor').then(r=>r.json()).catch(()=>[]),
       fetch('/api/logs').then(r=>r.json()).catch(()=>[]),
+      fetch('/api/alerts').then(r=>r.json()).catch(()=>null),
+      fetch('/api/history').then(r=>r.json()).catch(()=>[]),
     ]);
     if(s&&!s.error){
       const comp4kpi=comp||{};
@@ -424,6 +463,8 @@ async function loadAll(){
     if(findings){ renderSev(document.getElementById('sevChart'), findings); renderFindings(document.getElementById('findings'), findings); }
     renderAdvisor(document.getElementById('advisor'), advisor);
     renderFeed(document.getElementById('feed'), logs, findings);
+    renderAlerts(document.getElementById('alerts'), alerts);
+    if(history){ renderTrend('resTrend', history, 'resources', '#1fd1a5'); renderTrend('postureTrend', history, 'posture_pct', '#27e0c8'); renderTrend('costTrend', history, 'cost', '#ffc24b'); }
     fill('rg','/api/resources',renderRg,'rg-search');
     stamp(); updateSynced();
   }catch(e){ toast('Load failed: '+e); }
@@ -436,6 +477,14 @@ document.getElementById('sync').addEventListener('click', async ()=>{
   const b=document.getElementById('sync'); b.disabled=true; b.textContent='⇅ Syncing…';
   try{ await fetch('/api/refresh',{method:'POST'}); await loadAll(); }catch(e){ toast('Sync failed: '+e); }
   finally{ b.disabled=false; b.textContent='⇅ Sync now'; updateSynced(); }
+});
+document.getElementById('export').addEventListener('click', async ()=>{
+  try{
+    const r=await fetch('/api/export'); const j=await r.json();
+    const blob=new Blob([JSON.stringify(j,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='azure-inspect-snapshot.json'; a.click(); URL.revokeObjectURL(a.href);
+  }catch(e){ toast('Export failed: '+e); }
 });
 if(document.getElementById('auto').checked){ setInterval(loadAll, 60000); setInterval(updateSynced, 15000); }
 loadAll();
@@ -888,6 +937,91 @@ def create_app(
                 counts[f["severity"]] = counts.get(f["severity"], 0) + 1
             return {"findings": findings, "counts": counts}
         return _safe(lambda cfg: cache.cached("findings", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/alerts")
+    def api_alerts():
+        """Grafana-style alerting view: the rules Azure-Inspect evaluates, their
+        current status, and when each last fired (from the alert_cooldown table).
+
+        Status is computed live against the current cache (not just 'did it fire
+        recently'): stale data / missing baseline are reported as firing so the
+        panel reflects real conditions, not just cooldown state.
+        """
+        def _last_fired(key):
+            try:
+                import sqlite3
+                from pathlib import Path
+                db = Path.home() / "code" / "Azure-Inspect" / "azure_inspect.db"
+                con = sqlite3.connect(db)
+                row = con.execute(
+                    "SELECT ts FROM alert_cooldown WHERE key=?", (key,)
+                ).fetchone()
+                con.close()
+                return row[0] if row else None
+            except Exception:
+                return None
+
+        def _compute(cfg):
+            from .. import alerts as al
+            rules = []
+            # 1) Spend spike
+            daily = cache.value("costs_daily") or []
+            series = [(row["day"], float(row["cost"])) for row in daily if "cost" in row]
+            spike_state = "ok"
+            if len(series) >= 8:
+                latest = series[-1][1]
+                baseline = sorted(c[1] for c in series[-8:-1])
+                median = baseline[len(baseline) // 2]
+                threshold = max(2 * median, 10.0)
+                if median > 0 and latest > threshold:
+                    spike_state = "firing"
+            rules.append({
+                "key": "spend_spike", "name": "Spend spike",
+                "state": spike_state, "last_fired": _last_fired("spend_spike"),
+                "detail": "latest daily cost > 2x 7d median and above 10 CHF floor",
+            })
+            # 2) New resource group
+            baseline = cache.value("rg_baseline")
+            current = [rg.name for rg in list_resource_groups(cfg)]
+            new_state = "ok"
+            if baseline is not None:
+                new_rgs = set(current) - set(baseline)
+                if new_rgs:
+                    new_state = "firing"
+            rules.append({
+                "key": "new_rg", "name": "New resource group",
+                "state": new_state, "last_fired": _last_fired("new_rg:any") or _last_fired("new_rg"),
+                "detail": "a resource group appeared that was not in the stored baseline",
+            })
+            # 3) Stale data
+            cost_ts = cache.written_at("costs_30")
+            stale_state = "ok"
+            if cost_ts is None:
+                stale_state = "firing"
+            rules.append({
+                "key": "stale_data", "name": "Stale cost data",
+                "state": stale_state, "last_fired": _last_fired("stale_cost"),
+                "detail": "cost cache has not refreshed successfully",
+            })
+            return {"rules": rules, "telegram_configured": bool(al._read_env(al._ENV_PATH).get("TELEGRAM_BOT_TOKEN"))}
+        return _safe(lambda cfg: cache.cached("alerts", lambda: _compute(cfg), force=False), config_provider)
+
+    @app.route("/api/export")
+    def api_export():
+        """Grafana-style 'export dashboard' — return a full current snapshot as JSON."""
+        def _compute(cfg):
+            snap = {}
+            for k in ("summary", "resources", "inventory", "compliance", "advisor",
+                      "findings", "costs_30", "costs_daily", "logs", "history"):
+                snap[k] = cache.value(k)
+            snap["generated_at"] = datetime.now(timezone.utc).isoformat()
+            return snap
+        return _safe(lambda cfg: cache.cached("export", lambda: _compute(cfg)), config_provider)
+
+    @app.route("/api/history")
+    def api_history():
+        """Rolling time-series samples (resources / posture % / spend) for trend charts."""
+        return jsonify(cache.value("history") or [])
 
     @app.route("/health")
     def health():
