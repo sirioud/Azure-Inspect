@@ -67,7 +67,7 @@ _INDEX_HTML = """<!doctype html>
   .sidebar.collapsed .brand h1, .sidebar.collapsed .nav-label { display:none; }
   .nav-item { display:flex; align-items:center; gap:.7rem; padding:.6rem .7rem; border-radius:9px;
     color:var(--muted); cursor:pointer; font-size:.86rem; font-weight:500; transition:all .14s; white-space:nowrap; }
-  .nav-item:hover { background:rgba(255,255,255,.05); color:var(--fg); }
+  .nav-item:hover { background:rgba(255,255,255,.05); color:var(--fg); transform:translateX(3px); }
   .nav-item.active { background:linear-gradient(90deg, rgba(31,209,165,.16), rgba(31,209,165,.03)); color:var(--fg);
     box-shadow:inset 2px 0 0 var(--accent); }
   .nav-item svg { width:19px; height:19px; flex:0 0 auto; }
@@ -86,11 +86,12 @@ _INDEX_HTML = """<!doctype html>
   #controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
   select, button { background:var(--panel2); color:var(--fg); border:1px solid var(--border); border-radius:9px;
     padding:.42rem .8rem; cursor:pointer; font:inherit; font-size:.8rem; transition:all .15s; }
-  button:hover,select:hover { border-color:var(--accent); box-shadow:0 0 0 3px rgba(31,209,165,.13); }
-  button:active { transform:translateY(0); } button:disabled { opacity:.5; cursor:default; box-shadow:none; }
+  button:hover,select:hover { border-color:var(--accent); color:var(--fg);
+    transform:translateY(-2px); box-shadow:0 0 0 3px rgba(31,209,165,.13), 0 6px 18px rgba(31,209,165,.18); }
+  button:active { transform:translateY(0) scale(.97); } button:disabled { opacity:.5; cursor:default; box-shadow:none; transform:none; }
   input[type=checkbox]{ accent-color:var(--accent); }
-  .logout { color:var(--muted); text-decoration:none; font-size:.78rem; padding:.4rem .7rem; border:1px solid var(--border); border-radius:9px; }
-  .logout:hover { color:var(--fg); border-color:var(--accent); }
+  .logout { color:var(--muted); text-decoration:none; font-size:.78rem; padding:.4rem .7rem; border:1px solid var(--border); border-radius:9px; transition:all .15s; }
+  .logout:hover { color:var(--fg); border-color:var(--accent); transform:translateY(-2px); box-shadow:0 0 0 3px rgba(31,209,165,.13), 0 6px 18px rgba(31,209,165,.18); }
   main { padding:1.4rem 1.5rem 2rem; max-width:1340px; }
 
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:.9rem; margin-bottom:1.4rem; }
