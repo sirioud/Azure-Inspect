@@ -30,7 +30,7 @@ _INDEX_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Azure-Inspect · Security Posture</title>
+<title>INSPECTRUM · Security Posture</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
@@ -181,7 +181,7 @@ _INDEX_HTML = """<!doctype html>
       <path d="m9 12 2 2 4-4" stroke="url(#g)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#1fd1a5"/><stop offset="1" stop-color="#27e0c8"/></linearGradient></defs>
     </svg>
-    <h1>Azure-Inspect</h1>
+    <h1>INSPECTRUM</h1>
   </div>
   <div class="nav-item active" data-view="posture">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>
@@ -570,7 +570,7 @@ _LOGIN_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Azure-Inspect · Sign in</title>
+<title>INSPECTRUM · Sign in</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; }
@@ -595,7 +595,7 @@ _LOGIN_HTML = """<!doctype html>
 </head>
 <body>
 <div class="box">
-  <h1>Azure-Inspect</h1>
+  <h1>INSPECTRUM</h1>
   <form method="post" action="/login">
     <div class="err">{{ error or '' }}</div>
     <input type="password" name="password" placeholder="Dashboard password" autofocus required>
