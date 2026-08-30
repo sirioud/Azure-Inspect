@@ -144,6 +144,31 @@ _INDEX_HTML = """<!doctype html>
     color:var(--red); box-shadow:var(--shadow); transition:all .3s cubic-bezier(.2,.8,.2,1); pointer-events:none; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .view { display:none; } .view.active { display:block; }
+  /* ---- A+D: glow command-center + motion ---- */
+  :root { --glow:0 0 24px rgba(31,209,165,.30), 0 0 2px rgba(31,209,165,.6); }
+  body::after { content:""; position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.5;
+    background:linear-gradient(120deg, rgba(31,209,165,.05), rgba(39,224,200,.04) 40%, rgba(255,194,75,.03) 70%, rgba(31,209,165,.05));
+    background-size:300% 300%; animation:hue 18s ease infinite; }
+  @keyframes hue { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  .panel { box-shadow:var(--shadow), 0 0 0 1px rgba(31,209,165,.06), 0 0 22px rgba(31,209,165,.05); }
+  .panel:hover { box-shadow:var(--shadow), 0 0 0 1px rgba(31,209,165,.16), 0 0 34px rgba(31,209,165,.12); }
+  .kpi { box-shadow:var(--shadow), 0 0 20px rgba(31,209,165,.06); }
+  .kpi:hover { box-shadow:var(--shadow), 0 0 28px rgba(31,209,165,.16); }
+  .kpi .v { text-shadow:0 0 18px rgba(31,209,165,.25); transition:none; }
+  .nav-item.active { box-shadow:inset 2px 0 0 var(--accent), 0 0 16px rgba(31,209,165,.10); }
+  .brand h1 { animation:shimmer 6s linear infinite; background-size:200% auto; }
+  @keyframes shimmer { to { background-position:200% center; } }
+  /* hero gauge */
+  .hero { grid-column:span 12; display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap;
+    border-radius:14px; padding:1.2rem 1.4rem; background:linear-gradient(120deg, rgba(31,209,165,.07), rgba(39,224,200,.03)); border:1px solid var(--border); box-shadow:var(--shadow), 0 0 30px rgba(31,209,165,.08); }
+  .hero .gauge { width:230px; height:150px; flex:0 0 auto; }
+  .hero .htext { flex:1; min-width:220px; }
+  .hero .hbig { font-family:var(--mono); font-size:3.1rem; font-weight:800; line-height:1;
+    background:linear-gradient(100deg,var(--accent),var(--cyan)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    text-shadow:0 0 30px rgba(31,209,165,.25); }
+  .hero .hsub { color:var(--muted); font-size:.85rem; margin-top:.4rem; }
+  .hero .htags { display:flex; gap:.5rem; margin-top:.7rem; flex-wrap:wrap; }
+  .hero .htag { font-size:.7rem; padding:.25rem .6rem; border-radius:999px; background:rgba(255,255,255,.05); border:1px solid var(--border); color:var(--muted); font-family:var(--mono); }
   @media (max-width:900px){ .panel{ grid-column:span 12 !important; } }
   @media (max-width:640px){ main{padding:.9rem} header.top{padding:.7rem 1rem} }
 </style>
@@ -214,6 +239,14 @@ _INDEX_HTML = """<!doctype html>
 
     <!-- POSTURE (security landing) -->
     <div class="view active" id="view-posture">
+      <div class="hero">
+        <div class="gauge" id="postureGauge"></div>
+        <div class="htext">
+          <div class="hbig" id="hero-pct">–</div>
+          <div class="hsub" id="hero-sub">Security posture</div>
+          <div class="htags" id="hero-tags"></div>
+        </div>
+      </div>
       <div class="grid">
         <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Posture</h2></div><div id="govChart" class="chart sm"></div></div>
         <div class="panel"><div class="panel-head"><h2><span class="dot"></span> Findings by severity</h2></div><div id="sevChart" class="chart sm"></div></div>
@@ -318,19 +351,54 @@ async function fill(elId, url, render, searchId){
   render(el, data);
 }
 
+function animateValue(id, to, opts){
+  opts=opts||{};
+  const el=document.getElementById(id); if(!el) return;
+  const dec=opts.dec||0, suffix=opts.suffix||'', from=parseFloat(el.dataset.v||'0')||0;
+  const t0=performance.now(), dur=opts.dur||900;
+  function step(t){ const k=Math.min(1,(t-t0)/dur); const e=1-Math.pow(1-k,3);
+    const v=from+(to-from)*e; el.textContent=(dec?v.toFixed(dec):Math.round(v))+suffix;
+    if(k<1) requestAnimationFrame(step); else { el.dataset.v=to; } }
+  el.dataset.v=el.dataset.v||'0'; requestAnimationFrame(step);
+}
+function renderGauge(elId, pct, gaps){
+  const c=makeChart(elId); if(!c) return;
+  c.setOption({
+    series:[{ type:'gauge', startAngle:210, endAngle:-30, radius:'100%', center:['50%','62%'],
+      progress:{show:true, width:14, roundCap:true, itemStyle:{color: pct>=80? new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#27e0c8'},{offset:1,color:'#1fd1a5'}]) : (pct>=50? '#ffc24b':'#ff3b5c')}},
+      axisLine:{lineStyle:{width:14, color:[[1,'rgba(255,255,255,.08)']]}},
+      pointer:{show:false}, axisTick:{show:false}, splitLine:{show:false}, axisLabel:{show:false},
+      anchor:{show:false},
+      detail:{valueAnimation:true, fontSize:0, offsetCenter:[0,0]},
+      data:[{value:pct}],
+      title:{show:false}
+    }]
+  });
+  // big colored arc glow via a second transparent series
+  c.setOption({series:[{type:'gauge', startAngle:210, endAngle:-30, radius:'100%', center:['50%','62%'],
+    progress:{show:true, width:14, roundCap:true, itemStyle:{color:'transparent', shadowBlur:18, shadowColor: pct>=80?'#1fd1a5':(pct>=50?'#ffc24b':'#ff3b5c')}},
+    axisLine:{lineStyle:{width:14, color:[[1,'rgba(255,255,255,0)']]}}, pointer:{show:false}, axisTick:{show:false}, splitLine:{show:false}, axisLabel:{show:false}, anchor:{show:false}, detail:{show:false}, data:[{value:pct}], title:{show:false}}]});
+}
 function renderKpis(s, findings){
   document.getElementById('sub').textContent=s.subscription_id||'?';
-  document.getElementById('c-res').textContent=s.total_resources!=null?s.total_resources:'–';
-  document.getElementById('c-rg').textContent=s.resource_group_count!=null?s.resource_group_count:'–';
-  document.getElementById('c-cost').textContent=s.total_cost!=null?s.total_cost.toFixed(2)+' '+(s.currency||''):'–';
+  animateValue('c-res', s.total_resources!=null?s.total_resources:0);
+  animateValue('c-rg', s.resource_group_count!=null?s.resource_group_count:0);
+  animateValue('c-cost', s.total_cost!=null?s.total_cost:0, {dec:2, suffix:' '+(s.currency||'')});
   const gaps=(s.governance_gap_count||0);
   const total=(s.resource_group_count||0)||1;
   const pct=Math.max(0,Math.round((1-gaps/total)*100));
-  document.getElementById('c-score').textContent=pct+'%';
+  animateValue('c-score', pct, {suffix:'%'});
   document.getElementById('c-score-sub').textContent=gaps+' gap'+(gaps!==1?'s':'');
   const crit=(findings&&findings.counts)?(findings.counts.Critical||0)+(findings.counts.High||0):gaps;
-  document.getElementById('c-find').textContent=crit;
+  animateValue('c-find', crit);
   document.getElementById('c-find-sub').textContent='critical + high';
+  // hero
+  renderGauge('postureGauge', pct, gaps);
+  const hb=document.getElementById('hero-pct'); if(hb){ hb.textContent=pct+'%'; hb.dataset.v=pct; }
+  document.getElementById('hero-sub').textContent = gaps? (gaps+' governance gap'+(gaps!==1?'s':'')+' open') : 'All resource groups compliant';
+  const tags=document.getElementById('hero-tags');
+  if(tags){ tags.innerHTML = (findings&&findings.counts)?
+    ['Critical','High','Medium','Low'].map(k=>`<span class="htag">${k}: ${findings.counts[k]||0}</span>`).join('') : ''; }
 }
 function renderGov(el, comp){
   const gaps=(comp.governance_gap_count!=null?comp.governance_gap_count:(comp.governance_gaps||[]).length);
@@ -338,19 +406,20 @@ function renderGov(el, comp){
   const c=makeChart('govChart'); if(!c){ return; }
   c.setOption({tooltip:{trigger:'item'}, series:[{type:'pie',radius:['55%','80%'],center:['50%','45%'],
     label:{color:'#e7eef5',formatter:'{b}: {c}'},
-    data:[{name:'Compliant',value:clean,itemStyle:{color:'#1fd1a5'}},{name:'Gaps',value:gaps,itemStyle:{color:'#ff3b5c'}}]}]});
+    data:[{name:'Compliant',value:clean,itemStyle:{color:'#1fd1a5',shadowBlur:14,shadowColor:'rgba(31,209,165,.5)'}},{name:'Gaps',value:gaps,itemStyle:{color:'#ff3b5c',shadowBlur:14,shadowColor:'rgba(255,59,92,.5)'}}]}]});
 }
 function renderSev(el, f){
   const c=makeChart('sevChart'); if(!c){ return; }
   const co=(f&&f.counts)||{Critical:0,High:0,Medium:0,Low:0};
+  const glow={'Critical':'rgba(255,59,92,.5)','High':'rgba(255,106,61,.5)','Medium':'rgba(255,194,75,.5)','Low':'rgba(31,209,165,.5)'};
   c.setOption({grid:{left:8,right:8,top:14,bottom:8,containLabel:false}, tooltip:{trigger:'item'},
     series:[{type:'pie',radius:['45%','75%'],center:['50%','45%'],
       label:{color:'#e7eef5',formatter:'{b}: {c}'},
       data:[
-        {name:'Critical',value:co.Critical||0,itemStyle:{color:'#ff3b5c'}},
-        {name:'High',value:co.High||0,itemStyle:{color:'#ff6a3d'}},
-        {name:'Medium',value:co.Medium||0,itemStyle:{color:'#ffc24b'}},
-        {name:'Low',value:co.Low||0,itemStyle:{color:'#1fd1a5'}}
+        {name:'Critical',value:co.Critical||0,itemStyle:{color:'#ff3b5c',shadowBlur:12,shadowColor:glow.Critical}},
+        {name:'High',value:co.High||0,itemStyle:{color:'#ff6a3d',shadowBlur:12,shadowColor:glow.High}},
+        {name:'Medium',value:co.Medium||0,itemStyle:{color:'#ffc24b',shadowBlur:12,shadowColor:glow.Medium}},
+        {name:'Low',value:co.Low||0,itemStyle:{color:'#1fd1a5',shadowBlur:12,shadowColor:glow.Low}}
       ]}]});
 }
 function renderType(el, inv){
@@ -358,12 +427,12 @@ function renderType(el, inv){
   const pal=['#1fd1a5','#27e0c8','#00e0a4','#ffc24b','#ff6a3d','#ff3b5c','#8190a3'];
   c.setOption({tooltip:{trigger:'item'}, legend:{type:'scroll',orient:'vertical',right:6,top:10,textStyle:{color:'#8190a3',fontSize:10}},
     series:[{type:'pie',radius:['40%','70%'],center:['38%','50%'],
-      label:{show:false}, data:inv.by_type.map((t,i)=>({name:t.type.split('/').pop(),value:t.count,itemStyle:{color:pal[i%pal.length]}}))}]});
+      label:{show:false}, data:inv.by_type.map((t,i)=>({name:t.type.split('/').pop(),value:t.count,itemStyle:{color:pal[i%pal.length],shadowBlur:10,shadowColor:pal[i%pal.length]+'88'}}))}]});
 }
 function renderLoc(el, inv){
   const c=makeChart(el.id); if(!c||!inv.by_location||!inv.by_location.length){ return; }
   c.setOption({grid:baseGrid, tooltip:{trigger:'axis'}, xAxis:{type:'category',data:inv.by_location.map(l=>l.location||'unknown'),...axisStyle},
-    yAxis:{type:'value',...axisStyle}, series:[{type:'bar',data:inv.by_location.map(l=>l.count),itemStyle:{color:'#27e0c8',borderRadius:[4,4,0,0]}}]});
+    yAxis:{type:'value',...axisStyle}, series:[{type:'bar',data:inv.by_location.map(l=>l.count),itemStyle:{color:'#27e0c8',borderRadius:[4,4,0,0],shadowBlur:10,shadowColor:'rgba(39,224,200,.5)'}}]});
 }
 function renderTag(el, inv){
   const c=makeChart('tagChart'); if(!c){ return; }
@@ -429,11 +498,13 @@ function renderTrend(elId, hist, key, color){
   const c=makeChart(elId); if(!c) return;
   const data=(hist||[]).map(h=>({value:h[key], ts:h.ts}));
   const sm=elId!=='resTrend'&&elId!=='postureTrend'&&elId!=='costTrend'?false:true;
+  const grad=new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:color+'55'},{offset:1,color:color+'05'}]);
   c.setOption({grid:{left:8,right:12,top:14,bottom:sm?4:18,containLabel:true}, tooltip:{trigger:'axis'},
     xAxis:{type:'time',axisLabel:{show:!sm,color:'#8190a3',fontSize:10},axisLine:{lineStyle:{color:'rgba(255,255,255,.15)'}}},
     yAxis:{type:'value',...axisStyle},
     series:[{type:'line',data:data.map(d=>[d.ts,d.value]),smooth:true,showSymbol:false,
-      areaStyle:{color:color+'22'},itemStyle:{color:color}}]});
+      lineStyle:{width:2.4,color:color,shadowBlur:12,shadowColor:color+'aa'},
+      areaStyle:{color:grad},itemStyle:{color:color}}]});
 }
 
 let syncedTimer=null;
